@@ -1,5 +1,8 @@
 import { daysUntil } from './format'
+import { mergeMoney, sumByCurrency, type MoneyByCurrency } from './money'
 import type {
+  Currency,
+  MaintenanceCharge,
   MaintenanceFrequency,
   Note,
   Payment,
@@ -19,33 +22,55 @@ export function effectivePaymentStatus(payment: Payment): PaymentStatus {
 }
 
 export interface ProjectFinance {
+  /** The project's own currency; quoted/collected/pending are expressed in it. */
+  currency: Currency
   quoted: number
+  /** Payments cobrados in the project's currency — what `pending` discounts. */
   collected: number
   pending: number
+  quotedByCurrency: MoneyByCurrency
+  /** Payments cobrados, every currency. */
+  paidByCurrency: MoneyByCurrency
+  /** Recurring maintenance fees actually collected, every currency. */
+  maintenanceByCurrency: MoneyByCurrency
+  /** Total money in: payments plus maintenance. */
+  collectedByCurrency: MoneyByCurrency
   nextPayment: Payment | null
-  overduePayments: Payment[]
 }
 
 export function projectFinance(
   project: Project,
   payments: Payment[],
+  maintenanceCharges: MaintenanceCharge[] = [],
 ): ProjectFinance {
   const projectPayments = payments.filter((p) => p.projectId === project.id)
-  const collected = projectPayments
-    .filter((p) => p.status === 'Cobrado')
+  const paid = projectPayments.filter((p) => p.status === 'Cobrado')
+
+  // Only payments in the project's own currency can be discounted from the
+  // quote; anything else is surfaced separately instead of being summed in.
+  const collected = paid
+    .filter((p) => p.currency === project.currency)
     .reduce((sum, p) => sum + p.amount, 0)
-  const quoted = project.quotedAmount
-  const pending = Math.max(quoted - collected, 0)
+
+  const paidByCurrency = sumByCurrency(paid)
+  const maintenanceByCurrency = sumByCurrency(
+    maintenanceCharges.filter((c) => c.projectId === project.id),
+  )
+
   const upcoming = projectPayments
     .filter((p) => p.status !== 'Cobrado')
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-  const overduePayments = projectPayments.filter((p) => p.status === 'Vencido')
+
   return {
-    quoted,
+    currency: project.currency,
+    quoted: project.quotedAmount,
     collected,
-    pending,
+    pending: Math.max(project.quotedAmount - collected, 0),
+    quotedByCurrency: { [project.currency]: project.quotedAmount },
+    paidByCurrency,
+    maintenanceByCurrency,
+    collectedByCurrency: mergeMoney(paidByCurrency, maintenanceByCurrency),
     nextPayment: upcoming[0] ?? null,
-    overduePayments,
   }
 }
 
@@ -56,11 +81,24 @@ export const frequencyMonths: Record<MaintenanceFrequency, number> = {
   Anual: 12,
 }
 
-/** Maintenance fee normalized to a monthly figure, for MRR-style totals. */
+/**
+ * Maintenance fee normalized to a monthly figure, for MRR-style totals.
+ * Expressed in `project.maintenance.currency` — bucket before adding it up.
+ */
 export function monthlyMaintenanceValue(project: Project): number {
   const m = project.maintenance
   if (!m.active || m.status !== 'Activo') return 0
   return m.amount / frequencyMonths[m.frequency]
+}
+
+/** Infrastructure spend normalized to a monthly figure, bucketed by currency. */
+export function monthlyInfraCost(project: Project): MoneyByCurrency {
+  return sumByCurrency(
+    project.infrastructure.costs.map((c) => ({
+      amount: c.amount / frequencyMonths[c.frequency],
+      currency: c.currency,
+    })),
+  )
 }
 
 /** Next maintenance charge date as ISO (yyyy-mm-dd) or null when inactive. */

@@ -18,9 +18,23 @@ import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { useStore } from '@/lib/store'
 import { formatMoney } from '@/lib/format'
 import { MAINTENANCE_FREQUENCIES } from '@/lib/types'
-import type { Currency, MaintenanceFrequency, Project } from '@/lib/types'
+import type {
+  Currency,
+  MaintenanceFrequency,
+  PaymentMethod,
+  Project,
+} from '@/lib/types'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
+
+const methods: PaymentMethod[] = [
+  'Transferencia',
+  'Efectivo',
+  'Tarjeta',
+  'Mercado Pago',
+  'Crypto',
+  'PayPal',
+]
 
 export function ActivateMaintenanceDialog({
   project,
@@ -163,9 +177,16 @@ export function CollectMaintenanceDialog({
   const { collectMaintenance } = useStore()
   const [date, setDate] = React.useState(todayIso())
   const [amount, setAmount] = React.useState(String(project.maintenance.amount))
+  const [method, setMethod] = React.useState<PaymentMethod>('Transferencia')
+  const [receipt, setReceipt] = React.useState('')
 
   async function submit() {
-    await collectMaintenance(project.id, { date, amount: Number(amount) })
+    await collectMaintenance(project.id, {
+      date,
+      amount: Number(amount),
+      method,
+      receipt: receipt.trim() || null,
+    })
     toast.success('Mantenimiento cobrado', {
       description: `${project.name} — ${formatMoney(
         Number(amount),
@@ -204,6 +225,24 @@ export function CollectMaintenanceDialog({
               />
             </Field>
           </div>
+          <Field>
+            <FieldLabel htmlFor="cm-method">Método de pago</FieldLabel>
+            <SimpleSelect
+              id="cm-method"
+              value={method}
+              onValueChange={(v) => setMethod(v as PaymentMethod)}
+              options={methods.map((m) => ({ value: m, label: m }))}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="cm-receipt">Comprobante (opcional)</FieldLabel>
+            <Input
+              id="cm-receipt"
+              value={receipt}
+              onChange={(e) => setReceipt(e.target.value)}
+              placeholder="N° de factura o referencia"
+            />
+          </Field>
         </FieldGroup>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

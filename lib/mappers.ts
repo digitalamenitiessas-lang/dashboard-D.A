@@ -8,6 +8,7 @@ import type {
   InfraCost,
   Infrastructure,
   Maintenance,
+  MaintenanceCharge,
   Note,
   Payment,
   Project,
@@ -142,6 +143,19 @@ export function mapPayment(r: Row): Payment {
     paidDate: r.paid_date ?? null,
     method: r.method ?? null,
     status: r.status ?? 'Pendiente',
+    receipt: r.receipt ?? null,
+    notes: str(r.notes),
+  }
+}
+
+export function mapMaintenanceCharge(r: Row): MaintenanceCharge {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    chargedOn: r.charged_on,
+    amount: num(r.amount),
+    currency: r.currency ?? 'USD',
+    method: r.method ?? null,
     receipt: r.receipt ?? null,
     notes: str(r.notes),
   }

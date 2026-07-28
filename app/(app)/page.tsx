@@ -25,6 +25,13 @@ import {
   type AlertLevel,
 } from '@/lib/derive'
 import { formatMoney, formatDate, relativeDays, daysUntil } from '@/lib/format'
+import {
+  collectionRatio,
+  formatMoneyByCurrency,
+  isEmptyMoney,
+  mergeMoney,
+  pendingMoney,
+} from '@/lib/money'
 import { ACTIVE_STATUSES } from '@/lib/status'
 import { cn } from '@/lib/utils'
 
@@ -35,14 +42,22 @@ const alertDot: Record<AlertLevel, string> = {
 }
 
 export default function DashboardPage() {
-  const { projects, payments, notes, activity, tasks } = useStore()
+  const { projects, payments, notes, activity, tasks, maintenanceCharges } =
+    useStore()
 
-  const totalQuoted = projects.reduce((s, p) => s + p.quotedAmount, 0)
-  const totalCollected = projects.reduce(
-    (s, p) => s + projectFinance(p, payments).collected,
-    0,
+  const finances = projects.map((p) =>
+    projectFinance(p, payments, maintenanceCharges),
   )
-  const pending = Math.max(totalQuoted - totalCollected, 0)
+  const totalQuoted = mergeMoney(...finances.map((f) => f.quotedByCurrency))
+  const totalPaid = mergeMoney(...finances.map((f) => f.paidByCurrency))
+  const totalMaintenance = mergeMoney(
+    ...finances.map((f) => f.maintenanceByCurrency),
+  )
+  // Income is payments plus recurring fees; the outstanding balance is only
+  // ever measured against the quoted work, so maintenance stays out of it.
+  const totalCollected = mergeMoney(totalPaid, totalMaintenance)
+  const pending = pendingMoney(totalQuoted, totalPaid)
+  const collectedPct = collectionRatio(totalQuoted, totalPaid)
 
   const own = projects.filter((p) => p.type === 'propio').length
   const third = projects.filter((p) => p.type === 'terceros').length
@@ -93,22 +108,28 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Total cotizado"
-          value={formatMoney(totalQuoted)}
+          value={formatMoneyByCurrency(totalQuoted)}
           hint={`${projects.length} proyectos`}
           icon={TrendingUp}
           accent="blue"
         />
         <StatCard
           label="Total cobrado"
-          value={formatMoney(totalCollected)}
-          hint={`${Math.round((totalCollected / (totalQuoted || 1)) * 100)}% del total`}
+          value={formatMoneyByCurrency(totalCollected)}
+          hint={
+            isEmptyMoney(totalMaintenance)
+              ? collectedPct !== null
+                ? `${collectedPct}% del total`
+                : 'Cobros de proyectos'
+              : `Incluye ${formatMoneyByCurrency(totalMaintenance)} de mantenimientos`
+          }
           icon={Wallet}
           accent="green"
         />
         <StatCard
           label="Saldo pendiente"
-          value={formatMoney(pending)}
-          hint="Por cobrar"
+          value={formatMoneyByCurrency(pending)}
+          hint="Por cobrar de lo cotizado"
           icon={Clock}
           accent="violet"
         />

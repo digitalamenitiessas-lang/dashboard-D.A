@@ -36,8 +36,13 @@ import { PageHeader } from '@/components/shared/page-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { SectionCard } from '@/components/dashboard/section-card'
 import { useStore } from '@/lib/store'
-import { frequencyMonths } from '@/lib/derive'
-import { formatDate, formatMoney, relativeDays, daysUntil } from '@/lib/format'
+import { monthlyInfraCost } from '@/lib/derive'
+import { formatDate, relativeDays, daysUntil } from '@/lib/format'
+import {
+  formatMoneyByCurrency,
+  isEmptyMoney,
+  mergeMoney,
+} from '@/lib/money'
 import { cn } from '@/lib/utils'
 
 /** Projects only appear here once they have something deployed to track. */
@@ -66,15 +71,7 @@ export default function InfraestructuraPage() {
   })
 
   // Monthly-normalized infrastructure spend across every project.
-  const monthlyCost = projects.reduce(
-    (sum, p) =>
-      sum +
-      p.infrastructure.costs.reduce(
-        (s, c) => s + c.amount / frequencyMonths[c.frequency],
-        0,
-      ),
-    0,
-  )
+  const monthlyCost = mergeMoney(...projects.map(monthlyInfraCost))
 
   const domains = projects
     .filter((p) => p.infrastructure.domain && p.infrastructure.domainExpiry)
@@ -106,7 +103,7 @@ export default function InfraestructuraPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
           label="Costo mensual"
-          value={formatMoney(Math.round(monthlyCost))}
+          value={formatMoneyByCurrency(monthlyCost)}
           hint="Hosting, DB, APIs e IA"
           icon={CircleDollarSign}
           accent="violet"
@@ -246,10 +243,7 @@ export default function InfraestructuraPage() {
             <TableBody>
               {filtered.map((p) => {
                 const i = p.infrastructure
-                const cost = i.costs.reduce(
-                  (s, c) => s + c.amount / frequencyMonths[c.frequency],
-                  0,
-                )
+                const cost = monthlyInfraCost(p)
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">
@@ -295,7 +289,7 @@ export default function InfraestructuraPage() {
                       {i.techLead || '—'}
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {cost > 0 ? formatMoney(Math.round(cost)) : '—'}
+                      {isEmptyMoney(cost) ? '—' : formatMoneyByCurrency(cost)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">

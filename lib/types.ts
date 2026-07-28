@@ -138,6 +138,18 @@ export interface Maintenance {
   lastCollectedDate: string | null // ISO
 }
 
+/** One recurring maintenance fee actually collected. */
+export interface MaintenanceCharge {
+  id: string
+  projectId: string
+  chargedOn: string // ISO
+  amount: number
+  currency: Currency
+  method: PaymentMethod | null
+  receipt: string | null
+  notes: string
+}
+
 export interface ActivityEntry {
   id: string
   projectId: string | null

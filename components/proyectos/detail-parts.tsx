@@ -27,14 +27,16 @@ export function DetailCard({
   icon: Icon,
   children,
   action,
+  className,
 }: {
   title: string
   icon?: LucideIcon
   children: React.ReactNode
   action?: React.ReactNode
+  className?: string
 }) {
   return (
-    <div className="glass rounded-2xl p-5">
+    <div className={cn('glass rounded-2xl p-5', className)}>
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {Icon ? <Icon className="size-4 text-muted-foreground" /> : null}

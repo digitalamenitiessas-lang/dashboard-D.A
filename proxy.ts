@@ -4,8 +4,10 @@ import { NextResponse, type NextRequest } from 'next/server'
 /**
  * Refreshes the Supabase session on every request and gates the app:
  * anyone without a session is sent to /login.
+ *
+ * Next 16 renamed this convention from `middleware` to `proxy`.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(

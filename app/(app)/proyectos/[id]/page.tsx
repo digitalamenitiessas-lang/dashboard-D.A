@@ -13,6 +13,7 @@ import {
   ExternalLink,
   GitBranch,
   Globe,
+  History,
   Pencil,
   Server,
   StickyNote,
@@ -45,6 +46,7 @@ import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
 import { projectFinance, nextMaintenanceCharge } from '@/lib/derive'
 import { formatDate, formatMoney, relativeDays } from '@/lib/format'
+import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { PROJECT_STATUSES } from '@/lib/types'
 import type { Payment, ProjectStatus } from '@/lib/types'
 
@@ -58,6 +60,7 @@ export default function ProjectDetailPage() {
     notes,
     activity,
     tasks,
+    maintenanceCharges,
     updateProjectStatus,
   } = useStore()
   const [payDialogOpen, setPayDialogOpen] = React.useState(false)
@@ -86,10 +89,13 @@ export default function ProjectDetailPage() {
   }
 
   const client = clients.find((c) => c.id === project.clientId)
-  const fin = projectFinance(project, payments)
+  const fin = projectFinance(project, payments, maintenanceCharges)
   const projectPayments = payments
     .filter((p) => p.projectId === project.id)
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  const projectCharges = maintenanceCharges.filter(
+    (c) => c.projectId === project.id,
+  )
   const dev = project.development
   const infra = project.infrastructure
   const mnt = project.maintenance
@@ -182,6 +188,11 @@ export default function ProjectDetailPage() {
         <StatCard
           label="Cobrado"
           value={formatMoney(fin.collected, project.currency)}
+          hint={
+            isEmptyMoney(fin.maintenanceByCurrency)
+              ? undefined
+              : `+ ${formatMoneyByCurrency(fin.maintenanceByCurrency)} en mantenimientos`
+          }
           accent="green"
         />
         <StatCard
@@ -495,6 +506,49 @@ export default function ProjectDetailPage() {
               </DetailCard>
               <DetailCard title="Servicios incluidos">
                 <TodoList items={mnt.services} empty="Sin servicios definidos" />
+              </DetailCard>
+              <DetailCard
+                title="Historial de cobros"
+                icon={History}
+                className="lg:col-span-2"
+              >
+                {projectCharges.length === 0 ? (
+                  <p className="py-2 text-sm text-muted-foreground">
+                    Todavía sin cobros registrados.
+                  </p>
+                ) : (
+                  <>
+                    <ul className="flex flex-col divide-y divide-white/5">
+                      {projectCharges.map((charge) => (
+                        <li
+                          key={charge.id}
+                          className="flex items-center justify-between gap-3 py-2.5"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-sm">
+                              {formatDate(charge.chargedOn)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {charge.method ?? 'Sin medio'}
+                              {charge.receipt ? ` · ${charge.receipt}` : ''}
+                            </p>
+                          </div>
+                          <span className="shrink-0 text-sm font-semibold tabular-nums">
+                            {formatMoney(charge.amount, charge.currency)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-2.5 text-sm">
+                      <span className="text-muted-foreground">
+                        Total cobrado ({projectCharges.length})
+                      </span>
+                      <span className="font-semibold tabular-nums text-neon-green">
+                        {formatMoneyByCurrency(fin.maintenanceByCurrency)}
+                      </span>
+                    </div>
+                  </>
+                )}
               </DetailCard>
             </div>
           ) : (

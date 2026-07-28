@@ -11,6 +11,7 @@ import {
   maintenanceToRow,
   mapActivity,
   mapClient,
+  mapMaintenanceCharge,
   mapNote,
   mapPayment,
   mapProject,
@@ -26,6 +27,7 @@ import type {
   InfraCost,
   Infrastructure,
   Maintenance,
+  MaintenanceCharge,
   Note,
   Payment,
   Project,
@@ -61,6 +63,7 @@ interface StoreValue {
   notes: Note[]
   activity: ActivityEntry[]
   tasks: Task[]
+  maintenanceCharges: MaintenanceCharge[]
   refresh: () => Promise<void>
 
   // projects
@@ -147,6 +150,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [notes, setNotes] = React.useState<Note[]>([])
   const [activity, setActivity] = React.useState<ActivityEntry[]>([])
   const [tasks, setTasks] = React.useState<Task[]>([])
+  const [maintenanceCharges, setMaintenanceCharges] = React.useState<
+    MaintenanceCharge[]
+  >([])
 
   /** Surfaces the failure to the user and keeps it out of the happy path. */
   const fail = React.useCallback((action: string, e: unknown) => {
@@ -157,7 +163,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t] = await Promise.all([
+      const [p, c, pay, n, a, t, mc] = await Promise.all([
         supabase
           .from('projects')
           .select(PROJECT_SELECT)
@@ -171,10 +177,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .order('date', { ascending: false })
           .limit(100),
         supabase.from('project_tasks').select('*').order('created_at'),
+        supabase
+          .from('maintenance_charges')
+          .select('*')
+          .order('charged_on', { ascending: false }),
       ])
 
       const firstError =
-        p.error || c.error || pay.error || n.error || a.error || t.error
+        p.error ||
+        c.error ||
+        pay.error ||
+        n.error ||
+        a.error ||
+        t.error ||
+        mc.error
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -183,6 +199,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setNotes((n.data ?? []).map(mapNote))
       setActivity((a.data ?? []).map(mapActivity))
       setTasks((t.data ?? []).map(mapTask))
+      setMaintenanceCharges((mc.data ?? []).map(mapMaintenanceCharge))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -308,6 +325,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setProjects((prev) => prev.filter((p) => p.id !== id))
         setPayments((prev) => prev.filter((p) => p.projectId !== id))
         setTasks((prev) => prev.filter((t) => t.projectId !== id))
+        setMaintenanceCharges((prev) => prev.filter((c) => c.projectId !== id))
       } catch (e) {
         fail('eliminar el proyecto', e)
       }
@@ -768,15 +786,24 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ) => {
       try {
         const project = projects.find((p) => p.id === id)
-        const { error } = await supabase.from('maintenance_charges').insert({
-          project_id: id,
-          charged_on: data.date,
-          amount: data.amount,
-          currency: project?.maintenance.currency ?? 'USD',
-          method: data.method ?? null,
-          receipt: data.receipt ?? null,
-        })
+        const { data: charge, error } = await supabase
+          .from('maintenance_charges')
+          .insert({
+            project_id: id,
+            charged_on: data.date,
+            amount: data.amount,
+            currency: project?.maintenance.currency ?? 'USD',
+            method: data.method ?? null,
+            receipt: data.receipt ?? null,
+          })
+          .select()
+          .single()
         if (error) throw error
+        setMaintenanceCharges((prev) =>
+          [mapMaintenanceCharge(charge), ...prev].sort((a, b) =>
+            b.chargedOn.localeCompare(a.chargedOn),
+          ),
+        )
 
         const { error: mErr } = await supabase
           .from('project_maintenance')
@@ -806,6 +833,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     notes,
     activity,
     tasks,
+    maintenanceCharges,
     refresh,
     addProject,
     updateProject,

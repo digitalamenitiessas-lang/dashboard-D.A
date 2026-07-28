@@ -32,21 +32,30 @@ import { NewClientDialog } from '@/components/clientes/new-client-dialog'
 import { EditClientDialog } from '@/components/clientes/edit-client-dialog'
 import { useStore } from '@/lib/store'
 import { projectFinance } from '@/lib/derive'
-import { formatMoney } from '@/lib/format'
+import {
+  collectionRatio,
+  formatMoneyByCurrency,
+  isEmptyMoney,
+  mergeMoney,
+  pendingMoney,
+} from '@/lib/money'
 import type { Client } from '@/lib/types'
 
 export default function ClientesPage() {
-  const { clients, projects, payments } = useStore()
+  const { clients, projects, payments, maintenanceCharges } = useStore()
   const [query, setQuery] = React.useState('')
   const [editTarget, setEditTarget] = React.useState<Client | null>(null)
 
   const enriched = React.useMemo(() => {
     return clients.map((client) => {
       const clientProjects = projects.filter((p) => p.clientId === client.id)
-      const quoted = clientProjects.reduce((s, p) => s + p.quotedAmount, 0)
-      const collected = clientProjects.reduce(
-        (s, p) => s + projectFinance(p, payments).collected,
-        0,
+      const finances = clientProjects.map((p) =>
+        projectFinance(p, payments, maintenanceCharges),
+      )
+      const quoted = mergeMoney(...finances.map((f) => f.quotedByCurrency))
+      const paid = mergeMoney(...finances.map((f) => f.paidByCurrency))
+      const maintenance = mergeMoney(
+        ...finances.map((f) => f.maintenanceByCurrency),
       )
       const activeMaintenances = clientProjects.filter(
         (p) => p.maintenance.active && p.maintenance.status === 'Activo',
@@ -55,12 +64,16 @@ export default function ClientesPage() {
         client,
         projects: clientProjects,
         quoted,
-        collected,
-        pending: Math.max(quoted - collected, 0),
+        paid,
+        maintenance,
+        collected: mergeMoney(paid, maintenance),
+        // Measured against the quote, so recurring fees stay out of it.
+        pending: pendingMoney(quoted, paid),
+        pct: collectionRatio(quoted, paid),
         activeMaintenances,
       }
     })
-  }, [clients, projects, payments])
+  }, [clients, projects, payments, maintenanceCharges])
 
   const filtered = enriched.filter(({ client, projects: ps }) => {
     if (!query) return true
@@ -73,8 +86,8 @@ export default function ClientesPage() {
     )
   })
 
-  const totalQuoted = enriched.reduce((s, e) => s + e.quoted, 0)
-  const totalCollected = enriched.reduce((s, e) => s + e.collected, 0)
+  const totalQuoted = mergeMoney(...enriched.map((e) => e.quoted))
+  const totalCollected = mergeMoney(...enriched.map((e) => e.collected))
   const totalMaintenances = enriched.reduce(
     (s, e) => s + e.activeMaintenances.length,
     0,
@@ -98,12 +111,13 @@ export default function ClientesPage() {
         />
         <StatCard
           label="Total cotizado"
-          value={formatMoney(totalQuoted)}
+          value={formatMoneyByCurrency(totalQuoted)}
           accent="neutral"
         />
         <StatCard
           label="Total cobrado"
-          value={formatMoney(totalCollected)}
+          value={formatMoneyByCurrency(totalCollected)}
+          hint="Cobros y mantenimientos"
           icon={Wallet}
           accent="green"
         />
@@ -140,8 +154,16 @@ export default function ClientesPage() {
       ) : (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
           {filtered.map(
-            ({ client, projects: ps, quoted, collected, pending, activeMaintenances }) => {
-              const pct = Math.round((collected / (quoted || 1)) * 100)
+            ({
+              client,
+              projects: ps,
+              quoted,
+              paid,
+              maintenance,
+              pending,
+              pct,
+              activeMaintenances,
+            }) => {
               return (
                 <section key={client.id} className="glass rounded-2xl p-5">
                   <div className="flex items-start justify-between gap-3">
@@ -198,24 +220,39 @@ export default function ClientesPage() {
                     <div>
                       <p className="text-[11px] text-muted-foreground">Cotizado</p>
                       <p className="mt-0.5 text-sm font-semibold tabular-nums">
-                        {formatMoney(quoted)}
+                        {formatMoneyByCurrency(quoted)}
                       </p>
                     </div>
                     <div>
                       <p className="text-[11px] text-muted-foreground">Cobrado</p>
                       <p className="mt-0.5 text-sm font-semibold tabular-nums text-neon-green">
-                        {formatMoney(collected)}
+                        {formatMoneyByCurrency(paid)}
                       </p>
                     </div>
                     <div>
                       <p className="text-[11px] text-muted-foreground">Pendiente</p>
                       <p className="mt-0.5 text-sm font-semibold tabular-nums">
-                        {formatMoney(pending)}
+                        {formatMoneyByCurrency(pending)}
                       </p>
                     </div>
-                    <div className="col-span-3">
-                      <Progress value={pct} className="h-1.5" />
-                    </div>
+                    {/* No conversion rate exists, so a single bar only makes
+                        sense while one currency is in play. */}
+                    {pct !== null ? (
+                      <div className="col-span-3">
+                        <Progress value={pct} className="h-1.5" />
+                      </div>
+                    ) : null}
+                    {!isEmptyMoney(maintenance) ? (
+                      <div className="col-span-3 flex items-center justify-between gap-3 border-t border-white/5 pt-2">
+                        <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                          <Wrench className="size-3" />
+                          Mantenimientos cobrados
+                        </span>
+                        <span className="text-xs font-semibold tabular-nums text-neon-violet">
+                          {formatMoneyByCurrency(maintenance)}
+                        </span>
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="mt-4">

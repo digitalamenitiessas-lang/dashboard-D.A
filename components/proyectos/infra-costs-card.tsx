@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/input'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { DetailCard } from '@/components/proyectos/detail-parts'
 import { useStore } from '@/lib/store'
-import { frequencyMonths } from '@/lib/derive'
+import { monthlyInfraCost } from '@/lib/derive'
 import { formatMoney } from '@/lib/format'
+import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { MAINTENANCE_FREQUENCIES } from '@/lib/types'
 import type { Currency, MaintenanceFrequency, Project } from '@/lib/types'
 
@@ -22,10 +23,7 @@ export function InfraCostsCard({ project }: { project: Project }) {
   const [adding, setAdding] = React.useState(false)
 
   const costs = project.infrastructure.costs
-  const monthly = costs.reduce(
-    (s, c) => s + c.amount / frequencyMonths[c.frequency],
-    0,
-  )
+  const monthly = monthlyInfraCost(project)
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -73,11 +71,11 @@ export function InfraCostsCard({ project }: { project: Project }) {
         </ul>
       )}
 
-      {monthly > 0 ? (
+      {!isEmptyMoney(monthly) ? (
         <div className="flex items-center justify-between py-2.5 text-sm">
           <span className="text-muted-foreground">Equivalente mensual</span>
           <span className="font-semibold tabular-nums text-neon-violet">
-            {formatMoney(Math.round(monthly))}
+            {formatMoneyByCurrency(monthly)}
           </span>
         </div>
       ) : null}

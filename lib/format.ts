@@ -14,6 +14,19 @@ export function formatMoney(amount: number, currency: Currency = 'USD') {
   }).format(amount)
 }
 
+/**
+ * "USD 15.000" instead of "$15,000". USD and ARS share the `$` symbol, so any
+ * figure shown next to another currency has to spell the code out.
+ */
+export function formatMoneyWithCode(amount: number, currency: Currency) {
+  return new Intl.NumberFormat(currencyLocale[currency] ?? 'en-US', {
+    style: 'currency',
+    currency,
+    currencyDisplay: 'code',
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
 export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''))

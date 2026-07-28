@@ -72,10 +72,12 @@ npx next dev
 ```
 app/(app)/        Pantallas autenticadas (dashboard, proyectos, cobros, ...)
 app/login/        Pantalla de acceso
+proxy.ts          Refresca la sesión y manda a /login a quien no la tenga
 components/       UI (ui/ es shadcn; el resto es por dominio)
 lib/store.tsx     Estado global respaldado por Supabase — useStore()
 lib/mappers.ts    Traducción entre filas snake_case y tipos del dominio
 lib/derive.ts     Lógica derivada: finanzas, próximo cobro, motor de alertas
+lib/money.ts      Totales por moneda (nunca se suman monedas distintas)
 lib/types.ts      Modelo de dominio (los enums espejan los de Postgres)
 supabase/         Scripts SQL versionados
 ```
@@ -88,3 +90,12 @@ supabase/         Scripts SQL versionados
 - Karla usa cifras proporcionales por defecto: todo número en columna necesita
   `tabular-nums` para alinear.
 - La lógica de negocio derivada vive en `lib/derive.ts`, no en las pantallas.
+- **Nunca sumes montos de monedas distintas.** No hay cotización cargada, así
+  que todo total pasa por `lib/money.ts`: se agrupa por moneda y se muestra
+  como `USD 15.000 · ARS 4.500.000`. Cuando hay dos o más monedas la línea usa
+  el código (`USD`, `ARS`) porque ambas comparten el símbolo `$`. Los
+  porcentajes y las barras de progreso sólo aparecen si hay una sola moneda:
+  `collectionRatio()` devuelve `null` en cualquier otro caso.
+- Los cobros de mantenimiento viven en `maintenance_charges`, aparte de
+  `payments`. Suman a los ingresos, pero **no** al saldo pendiente: lo
+  pendiente siempre se mide contra lo cotizado del proyecto.
