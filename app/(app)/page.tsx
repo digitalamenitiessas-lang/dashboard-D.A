@@ -73,9 +73,8 @@ export default function DashboardPage() {
       !['Implementado', 'En mantenimiento', 'Finalizado'].includes(p.status),
   ).length
 
-  const upcomingPayments = payments
-    .filter((p) => p.status !== 'Cobrado')
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+  const recentPayments = [...payments]
+    .sort((a, b) => b.paidDate.localeCompare(a.paidDate))
     .slice(0, 4)
 
   const maintenanceDue = projects
@@ -84,7 +83,7 @@ export default function DashboardPage() {
     .sort((a, b) => a.next.localeCompare(b.next))
     .slice(0, 4)
 
-  const alerts = buildAlerts({ projects, payments, notes, tasks }).slice(0, 5)
+  const alerts = buildAlerts({ projects, notes, tasks }).slice(0, 5)
 
   const recentProjects = [...projects]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -151,38 +150,32 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
-        {/* Upcoming payments */}
-        <SectionCard title="Próximos cobros" icon={Wallet} href="/cobros">
+        {/* Latest payments */}
+        <SectionCard title="Últimos cobros" icon={Wallet} href="/cobros">
           <ul className="flex flex-col gap-3">
-            {upcomingPayments.length === 0 ? (
-              <li className="text-sm text-muted-foreground">Sin cobros pendientes.</li>
+            {recentPayments.length === 0 ? (
+              <li className="text-sm text-muted-foreground">
+                Todavía sin cobros registrados.
+              </li>
             ) : (
-              upcomingPayments.map((pay) => {
-                const overdue = (daysUntil(pay.dueDate) ?? 0) < 0 || pay.status === 'Vencido'
-                return (
-                  <li key={pay.id} className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{pay.concept}</p>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {projectName(pay.projectId)}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-right">
-                      <p className="text-sm font-semibold tabular-nums">
-                        {formatMoney(pay.amount, pay.currency)}
-                      </p>
-                      <p
-                        className={cn(
-                          'text-xs',
-                          overdue ? 'text-red-300' : 'text-muted-foreground',
-                        )}
-                      >
-                        {relativeDays(pay.dueDate)}
-                      </p>
-                    </div>
-                  </li>
-                )
-              })
+              recentPayments.map((pay) => (
+                <li key={pay.id} className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">{pay.concept}</p>
+                    <p className="truncate text-xs text-muted-foreground">
+                      {projectName(pay.projectId)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold tabular-nums text-neon-green">
+                      {formatMoney(pay.amount, pay.currency)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {relativeDays(pay.paidDate)}
+                    </p>
+                  </div>
+                </li>
+              ))
             )}
           </ul>
         </SectionCard>

@@ -6,20 +6,9 @@ import type {
   MaintenanceFrequency,
   Note,
   Payment,
-  PaymentStatus,
   Project,
   Task,
 } from './types'
-
-/**
- * Stored status can go stale as dates pass, so a pending payment past its due
- * date reads as overdue everywhere without needing a write.
- */
-export function effectivePaymentStatus(payment: Payment): PaymentStatus {
-  if (payment.status === 'Cobrado') return 'Cobrado'
-  const d = daysUntil(payment.dueDate)
-  return d !== null && d < 0 ? 'Vencido' : payment.status
-}
 
 export interface ProjectFinance {
   /** The project's own currency; quoted/collected/pending are expressed in it. */
@@ -35,7 +24,6 @@ export interface ProjectFinance {
   maintenanceByCurrency: MoneyByCurrency
   /** Total money in: payments plus maintenance. */
   collectedByCurrency: MoneyByCurrency
-  nextPayment: Payment | null
 }
 
 export function projectFinance(
@@ -43,8 +31,8 @@ export function projectFinance(
   payments: Payment[],
   maintenanceCharges: MaintenanceCharge[] = [],
 ): ProjectFinance {
-  const projectPayments = payments.filter((p) => p.projectId === project.id)
-  const paid = projectPayments.filter((p) => p.status === 'Cobrado')
+  // Every stored payment is money already received.
+  const paid = payments.filter((p) => p.projectId === project.id)
 
   // Only payments in the project's own currency can be discounted from the
   // quote; anything else is surfaced separately instead of being summed in.
@@ -57,10 +45,6 @@ export function projectFinance(
     maintenanceCharges.filter((c) => c.projectId === project.id),
   )
 
-  const upcoming = projectPayments
-    .filter((p) => p.status !== 'Cobrado')
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-
   return {
     currency: project.currency,
     quoted: project.quotedAmount,
@@ -70,7 +54,6 @@ export function projectFinance(
     paidByCurrency,
     maintenanceByCurrency,
     collectedByCurrency: mergeMoney(paidByCurrency, maintenanceByCurrency),
-    nextPayment: upcoming[0] ?? null,
   }
 }
 
@@ -144,46 +127,20 @@ export interface AlertItem {
 
 interface AlertInput {
   projects: Project[]
-  payments: Payment[]
   notes: Note[]
   tasks?: Task[]
 }
 
+/**
+ * Payments produce no alerts: they record money already received, so there
+ * is no due date to fall behind. Recurring maintenance still does.
+ */
 export function buildAlerts({
   projects,
-  payments,
   notes,
   tasks = [],
 }: AlertInput): AlertItem[] {
   const alerts: AlertItem[] = []
-
-  // Payments upcoming / overdue
-  for (const pay of payments) {
-    if (pay.status === 'Cobrado') continue
-    const d = daysUntil(pay.dueDate)
-    const project = projects.find((p) => p.id === pay.projectId)
-    if (pay.status === 'Vencido' || (d !== null && d < 0)) {
-      alerts.push({
-        id: `pay-${pay.id}`,
-        level: 'critical',
-        category: 'Cobros',
-        title: `Pago vencido · ${project?.name ?? ''}`,
-        detail: `${pay.concept} — vencía ${pay.dueDate}`,
-        projectId: pay.projectId,
-        date: pay.dueDate,
-      })
-    } else if (d !== null && d <= 7) {
-      alerts.push({
-        id: `pay-${pay.id}`,
-        level: 'warning',
-        category: 'Cobros',
-        title: `Pago próximo · ${project?.name ?? ''}`,
-        detail: `${pay.concept} — vence en ${d} día(s)`,
-        projectId: pay.projectId,
-        date: pay.dueDate,
-      })
-    }
-  }
 
   // Maintenance charges
   for (const project of projects) {

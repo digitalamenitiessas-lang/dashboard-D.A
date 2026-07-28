@@ -45,8 +45,6 @@ export type PaymentMethod =
   | 'Crypto'
   | 'PayPal'
 
-export type PaymentStatus = 'Pendiente' | 'Cobrado' | 'Vencido'
-
 export type MaintenanceStatus = 'Activo' | 'Pausado' | 'Cancelado'
 
 export const MAINTENANCE_FREQUENCIES = [
@@ -67,18 +65,19 @@ export interface Client {
   notes: string
 }
 
+/** Money that already came in. There is no scheduled/overdue notion. */
 export interface Payment {
   id: string
   projectId: string
   concept: string
   amount: number
   currency: Currency
-  dueDate: string // ISO
-  paidDate: string | null // ISO
+  paidDate: string // ISO
   method: PaymentMethod | null
-  status: PaymentStatus
   receipt: string | null
   notes: string
+  /** Which account the money landed in. Null = not assigned yet. */
+  accountId: string | null
 }
 
 export const TASK_KINDS = ['interno', 'cliente', 'bloqueador'] as const
@@ -147,6 +146,61 @@ export interface MaintenanceCharge {
   currency: Currency
   method: PaymentMethod | null
   receipt: string | null
+  notes: string
+  /** Which account the money landed in. Null = not assigned yet. */
+  accountId: string | null
+}
+
+export const ACCOUNT_KINDS = [
+  'Caja',
+  'Banco',
+  'Billetera',
+  'Inversión',
+  'Retiros',
+] as const
+
+export type AccountKind = (typeof ACCOUNT_KINDS)[number]
+
+/** Somewhere money can sit. Balances are derived, never stored. */
+export interface Account {
+  id: string
+  name: string
+  kind: AccountKind
+  currency: Currency
+  notes: string
+  archived: boolean
+  sortOrder: number
+}
+
+export const MOVEMENT_CATEGORIES = [
+  'Cambio de moneda',
+  'Transferencia',
+  'Gasto',
+  'Retiro',
+  'Inversión',
+  'Ingreso extra',
+  'Ajuste',
+] as const
+
+export type MovementCategory = (typeof MOVEMENT_CATEGORIES)[number]
+
+/**
+ * Money moving. Each amount is in its own account's currency, so a
+ * currency exchange is just a movement between accounts of different
+ * currencies — the rate is implied by the two amounts.
+ *
+ * No origin = money came in from outside. No destination = it left.
+ */
+export interface MoneyMovement {
+  id: string
+  movedOn: string // ISO
+  category: MovementCategory
+  concept: string
+  fromAccountId: string | null
+  amountOut: number
+  toAccountId: string | null
+  amountIn: number
+  projectId: string | null
   notes: string
 }
 

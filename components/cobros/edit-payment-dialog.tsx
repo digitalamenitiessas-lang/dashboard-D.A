@@ -15,8 +15,9 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
+import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
-import type { Currency, Payment, PaymentMethod, PaymentStatus } from '@/lib/types'
+import type { Currency, Payment, PaymentMethod } from '@/lib/types'
 
 const methods: PaymentMethod[] = [
   'Transferencia',
@@ -36,19 +37,25 @@ export function EditPaymentDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { updatePayment, deletePayment } = useStore()
+  const { accounts, updatePayment, deletePayment } = useStore()
   const [concept, setConcept] = React.useState(payment.concept)
   const [amount, setAmount] = React.useState(String(payment.amount))
   const [currency, setCurrency] = React.useState<Currency>(payment.currency)
-  const [dueDate, setDueDate] = React.useState(payment.dueDate)
-  const [paidDate, setPaidDate] = React.useState(payment.paidDate ?? '')
+  const [paidDate, setPaidDate] = React.useState(payment.paidDate)
   const [method, setMethod] = React.useState<string>(payment.method ?? '')
-  const [status, setStatus] = React.useState<PaymentStatus>(payment.status)
   const [receipt, setReceipt] = React.useState(payment.receipt ?? '')
   const [notes, setNotes] = React.useState(payment.notes)
+  const [accountId, setAccountId] = React.useState(payment.accountId ?? '')
   const [saving, setSaving] = React.useState(false)
 
-  const valid = concept.trim() && Number(amount) > 0 && dueDate
+  // An account holds one currency, so switching the currency can leave a
+  // now-invalid account selected.
+  React.useEffect(() => {
+    const picked = accounts.find((a) => a.id === accountId)
+    if (picked && picked.currency !== currency) setAccountId('')
+  }, [currency, accountId, accounts])
+
+  const valid = concept.trim() && Number(amount) > 0 && paidDate
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -58,12 +65,11 @@ export function EditPaymentDialog({
       concept: concept.trim(),
       amount: Number(amount),
       currency,
-      dueDate,
-      paidDate: paidDate || null,
+      paidDate,
       method: (method || null) as PaymentMethod | null,
-      status,
       receipt: receipt.trim() || null,
       notes: notes.trim(),
+      accountId: accountId || null,
     })
     setSaving(false)
     toast.success('Pago actualizado')
@@ -84,7 +90,7 @@ export function EditPaymentDialog({
         <DialogHeader>
           <DialogTitle>Editar pago</DialogTitle>
           <DialogDescription>
-            Corregí el importe, la fecha o el estado del cobro.
+            Corregí el concepto, el importe o la fecha en que se cobró.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
@@ -120,27 +126,7 @@ export function EditPaymentDialog({
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Field>
-                <FieldLabel htmlFor="epay-due">Vencimiento</FieldLabel>
-                <Input
-                  id="epay-due"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="epay-status">Estado</FieldLabel>
-                <SimpleSelect
-                  id="epay-status"
-                  value={status}
-                  onValueChange={(v) => setStatus(v as PaymentStatus)}
-                  options={toOptions(['Pendiente', 'Cobrado', 'Vencido'] as const)}
-                />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field>
-                <FieldLabel htmlFor="epay-paid">Fecha de cobro</FieldLabel>
+                <FieldLabel htmlFor="epay-paid">Fecha de pago</FieldLabel>
                 <Input
                   id="epay-paid"
                   type="date"
@@ -162,6 +148,17 @@ export function EditPaymentDialog({
                 />
               </Field>
             </div>
+            <Field>
+              <FieldLabel htmlFor="epay-account">¿A qué cuenta entró?</FieldLabel>
+              <AccountSelect
+                id="epay-account"
+                value={accountId}
+                onValueChange={setAccountId}
+                currency={currency}
+                allowNone
+                noneLabel="Sin asignar"
+              />
+            </Field>
             <Field>
               <FieldLabel htmlFor="epay-receipt">Comprobante</FieldLabel>
               <Input

@@ -1,11 +1,7 @@
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import {
-  paymentStatusStyles,
-  priorityStyles,
-  statusStyles,
-} from '@/lib/status'
-import type { PaymentStatus, Priority, ProjectStatus } from '@/lib/types'
+import { priorityStyles, statusStyles } from '@/lib/status'
+import type { Priority, ProjectStatus } from '@/lib/types'
 
 export function StatusChip({
   status,
@@ -28,17 +24,6 @@ export function PriorityChip({ priority }: { priority: Priority }) {
   return (
     <Badge variant="outline" className={cn('font-medium', priorityStyles[priority])}>
       {priority}
-    </Badge>
-  )
-}
-
-export function PaymentStatusChip({ status }: { status: PaymentStatus }) {
-  return (
-    <Badge
-      variant="outline"
-      className={cn('font-medium', paymentStatusStyles[status])}
-    >
-      {status}
     </Badge>
   )
 }

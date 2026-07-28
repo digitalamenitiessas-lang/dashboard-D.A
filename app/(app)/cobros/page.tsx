@@ -3,11 +3,11 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
+  CalendarDays,
   CircleDollarSign,
   Clock,
   Pencil,
   Search,
-  TriangleAlert,
   Wallet,
   Wrench,
 } from 'lucide-react'
@@ -34,13 +34,10 @@ import {
 import { PageHeader } from '@/components/shared/page-header'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
-import { PaymentStatusChip } from '@/components/shared/status-chip'
 import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
-import { CollectPaymentDialog } from '@/components/cobros/collect-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
-import { effectivePaymentStatus } from '@/lib/derive'
-import { formatDate, formatMoney, relativeDays } from '@/lib/format'
+import { formatDate, formatMoney } from '@/lib/format'
 import {
   collectionRatio,
   formatMoneyByCurrency,
@@ -48,18 +45,12 @@ import {
   pendingMoney,
   sumByCurrency,
 } from '@/lib/money'
-import { cn } from '@/lib/utils'
-import type {
-  Currency,
-  Payment,
-  PaymentMethod,
-  PaymentStatus,
-} from '@/lib/types'
+import type { Currency, Payment, PaymentMethod } from '@/lib/types'
 
 /**
  * Payments and collected maintenance fees share this screen, so both flow
- * through one normalized row. Only payments are editable — a maintenance
- * charge is a record of money already in.
+ * through one normalized row. Every row is money already received; only
+ * payments are editable, since a maintenance charge belongs to its plan.
  */
 interface CobroRow {
   id: string
@@ -68,21 +59,21 @@ interface CobroRow {
   concept: string
   amount: number
   currency: Currency
-  date: string
-  status: PaymentStatus
+  paidDate: string
   method: PaymentMethod | null
   receipt: string | null
-  paidDate: string | null
   payment: Payment | null
 }
+
+/** yyyy-mm prefix, for "this month" comparisons on ISO dates. */
+const currentMonth = () => new Date().toISOString().slice(0, 7)
 
 export default function CobrosPage() {
   const { projects, payments, maintenanceCharges } = useStore()
   const [query, setQuery] = React.useState('')
-  const [statusFilter, setStatusFilter] = React.useState('todos')
+  const [kindFilter, setKindFilter] = React.useState('todos')
   const [projectFilter, setProjectFilter] = React.useState('todos')
   const [addOpen, setAddOpen] = React.useState(false)
-  const [collectTarget, setCollectTarget] = React.useState<Payment | null>(null)
   const [editTarget, setEditTarget] = React.useState<Payment | null>(null)
 
   const projectName = React.useCallback(
@@ -93,15 +84,11 @@ export default function CobrosPage() {
   const totalQuoted = sumByCurrency(
     projects.map((p) => ({ amount: p.quotedAmount, currency: p.currency })),
   )
-  const totalPaid = sumByCurrency(payments.filter((p) => p.status === 'Cobrado'))
+  const totalPaid = sumByCurrency(payments)
   const totalMaintenance = sumByCurrency(maintenanceCharges)
   const totalCollected = mergeMoney(totalPaid, totalMaintenance)
   const pending = pendingMoney(totalQuoted, totalPaid)
   const collectedPct = collectionRatio(totalQuoted, totalPaid)
-  const overdue = payments.filter(
-    (p) => effectivePaymentStatus(p) === 'Vencido',
-  )
-  const overdueTotal = sumByCurrency(overdue)
 
   const rows = React.useMemo<CobroRow[]>(() => {
     const fromPayments: CobroRow[] = payments.map((pay) => ({
@@ -111,11 +98,9 @@ export default function CobrosPage() {
       concept: pay.concept,
       amount: pay.amount,
       currency: pay.currency,
-      date: pay.dueDate,
-      status: effectivePaymentStatus(pay),
+      paidDate: pay.paidDate,
       method: pay.method,
       receipt: pay.receipt,
-      paidDate: pay.paidDate,
       payment: pay,
     }))
 
@@ -126,21 +111,23 @@ export default function CobrosPage() {
       concept: 'Mantenimiento',
       amount: charge.amount,
       currency: charge.currency,
-      date: charge.chargedOn,
-      status: 'Cobrado',
+      paidDate: charge.chargedOn,
       method: charge.method,
       receipt: charge.receipt,
-      paidDate: charge.chargedOn,
       payment: null,
     }))
 
     return [...fromPayments, ...fromMaintenance]
   }, [payments, maintenanceCharges])
 
+  const thisMonth = sumByCurrency(
+    rows.filter((r) => r.paidDate.startsWith(currentMonth())),
+  )
+
   const filtered = React.useMemo(() => {
     return rows
       .filter((row) => {
-        if (statusFilter !== 'todos' && row.status !== statusFilter) return false
+        if (kindFilter !== 'todos' && row.kind !== kindFilter) return false
         if (projectFilter !== 'todos' && row.projectId !== projectFilter)
           return false
         if (query) {
@@ -153,23 +140,14 @@ export default function CobrosPage() {
         }
         return true
       })
-      .sort((a, b) => {
-        // Unpaid first, then by date.
-        const aPaid = a.status === 'Cobrado' ? 1 : 0
-        const bPaid = b.status === 'Cobrado' ? 1 : 0
-        if (aPaid !== bPaid) return aPaid - bPaid
-        // Pending rows read best oldest-first; settled ones newest-first.
-        return aPaid === 1
-          ? b.date.localeCompare(a.date)
-          : a.date.localeCompare(b.date)
-      })
-  }, [rows, statusFilter, projectFilter, query, projectName])
+      .sort((a, b) => b.paidDate.localeCompare(a.paidDate))
+  }, [rows, kindFilter, projectFilter, query, projectName])
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Cobros"
-        description="Todos los pagos de los proyectos: previstos, cobrados y vencidos."
+        description="Todo el dinero que entró: pagos de proyectos y mantenimientos."
       >
         <AddPaymentDialog open={addOpen} onOpenChange={setAddOpen} />
       </PageHeader>
@@ -203,11 +181,11 @@ export default function CobrosPage() {
           accent="violet"
         />
         <StatCard
-          label="Vencidos"
-          value={formatMoneyByCurrency(overdueTotal)}
-          hint={`${overdue.length} pago(s)`}
-          icon={TriangleAlert}
-          accent={overdue.length ? 'red' : 'neutral'}
+          label="Cobrado este mes"
+          value={formatMoneyByCurrency(thisMonth)}
+          hint="Pagos y mantenimientos"
+          icon={CalendarDays}
+          accent="neutral"
         />
       </div>
 
@@ -232,14 +210,13 @@ export default function CobrosPage() {
           ]}
         />
         <SimpleSelect
-          value={statusFilter}
-          onValueChange={setStatusFilter}
+          value={kindFilter}
+          onValueChange={setKindFilter}
           className="sm:w-44"
           options={[
-            { value: 'todos', label: 'Todos los estados' },
-            { value: 'Pendiente', label: 'Pendiente' },
-            { value: 'Cobrado', label: 'Cobrado' },
-            { value: 'Vencido', label: 'Vencido' },
+            { value: 'todos', label: 'Todo el dinero' },
+            { value: 'payment', label: 'Pagos de proyecto' },
+            { value: 'maintenance', label: 'Mantenimientos' },
           ]}
         />
       </div>
@@ -249,7 +226,7 @@ export default function CobrosPage() {
           <EmptyHeader>
             <EmptyTitle>Sin cobros</EmptyTitle>
             <EmptyDescription>
-              No hay pagos que coincidan con los filtros aplicados.
+              No hay movimientos que coincidan con los filtros aplicados.
             </EmptyDescription>
           </EmptyHeader>
         </Empty>
@@ -261,8 +238,7 @@ export default function CobrosPage() {
                 <TableHead>Concepto</TableHead>
                 <TableHead>Proyecto</TableHead>
                 <TableHead className="text-right">Monto</TableHead>
-                <TableHead>Fecha</TableHead>
-                <TableHead>Estado</TableHead>
+                <TableHead>Fecha de pago</TableHead>
                 <TableHead>Medio</TableHead>
                 <TableHead>Comprobante</TableHead>
                 <TableHead className="text-right">Acción</TableHead>
@@ -270,7 +246,6 @@ export default function CobrosPage() {
             </TableHeader>
             <TableBody>
               {filtered.map((row) => {
-                const late = row.status === 'Vencido'
                 const payment = row.payment
                 return (
                   <TableRow key={row.id}>
@@ -296,22 +271,7 @@ export default function CobrosPage() {
                     <TableCell className="text-right font-semibold tabular-nums">
                       {formatMoney(row.amount, row.currency)}
                     </TableCell>
-                    <TableCell>
-                      <span className="block">{formatDate(row.date)}</span>
-                      {row.status !== 'Cobrado' ? (
-                        <span
-                          className={cn(
-                            'text-xs',
-                            late ? 'text-red-300' : 'text-muted-foreground',
-                          )}
-                        >
-                          {relativeDays(row.date)}
-                        </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      <PaymentStatusChip status={row.status} />
-                    </TableCell>
+                    <TableCell>{formatDate(row.paidDate)}</TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.method ?? '—'}
                     </TableCell>
@@ -320,19 +280,6 @@ export default function CobrosPage() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
-                        {payment && payment.status !== 'Cobrado' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setCollectTarget(payment)}
-                          >
-                            Cobrar
-                          </Button>
-                        ) : (
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(row.paidDate)}
-                          </span>
-                        )}
                         {payment ? (
                           <Button
                             size="icon-sm"
@@ -342,7 +289,14 @@ export default function CobrosPage() {
                           >
                             <Pencil />
                           </Button>
-                        ) : null}
+                        ) : (
+                          <Link
+                            href="/mantenimientos"
+                            className="text-xs text-muted-foreground transition-colors hover:text-neon-green"
+                          >
+                            Ver plan
+                          </Link>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -352,14 +306,6 @@ export default function CobrosPage() {
           </Table>
         </div>
       )}
-
-      {collectTarget ? (
-        <CollectPaymentDialog
-          payment={collectTarget}
-          open={!!collectTarget}
-          onOpenChange={(o) => !o && setCollectTarget(null)}
-        />
-      ) : null}
 
       {editTarget ? (
         <EditPaymentDialog

@@ -1,8 +1,4 @@
-import type {
-  PaymentStatus,
-  Priority,
-  ProjectStatus,
-} from './types'
+import type { Priority, ProjectStatus } from './types'
 
 // Tailwind color classes per project status (semantic, subtle glass chips).
 export const statusStyles: Record<ProjectStatus, string> = {
@@ -24,12 +20,6 @@ export const priorityStyles: Record<Priority, string> = {
   Media: 'bg-neon-blue/10 text-neon-blue border-neon-blue/25',
   Alta: 'bg-amber-400/12 text-amber-300 border-amber-400/25',
   Crítica: 'bg-destructive/15 text-red-300 border-destructive/30',
-}
-
-export const paymentStatusStyles: Record<PaymentStatus, string> = {
-  Pendiente: 'bg-amber-400/12 text-amber-300 border-amber-400/25',
-  Cobrado: 'bg-neon-green/12 text-neon-green border-neon-green/30',
-  Vencido: 'bg-destructive/15 text-red-300 border-destructive/30',
 }
 
 // Groupings used for dashboard summaries.

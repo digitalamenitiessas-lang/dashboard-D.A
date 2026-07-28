@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
+import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
 import { formatMoney } from '@/lib/format'
 import { MAINTENANCE_FREQUENCIES } from '@/lib/types'
@@ -179,6 +180,7 @@ export function CollectMaintenanceDialog({
   const [amount, setAmount] = React.useState(String(project.maintenance.amount))
   const [method, setMethod] = React.useState<PaymentMethod>('Transferencia')
   const [receipt, setReceipt] = React.useState('')
+  const [accountId, setAccountId] = React.useState('')
 
   async function submit() {
     await collectMaintenance(project.id, {
@@ -186,6 +188,7 @@ export function CollectMaintenanceDialog({
       amount: Number(amount),
       method,
       receipt: receipt.trim() || null,
+      accountId: accountId || null,
     })
     toast.success('Mantenimiento cobrado', {
       description: `${project.name} — ${formatMoney(
@@ -232,6 +235,17 @@ export function CollectMaintenanceDialog({
               value={method}
               onValueChange={(v) => setMethod(v as PaymentMethod)}
               options={methods.map((m) => ({ value: m, label: m }))}
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="cm-account">¿A qué cuenta entró?</FieldLabel>
+            <AccountSelect
+              id="cm-account"
+              value={accountId}
+              onValueChange={setAccountId}
+              currency={project.maintenance.currency}
+              allowNone
+              noneLabel="Definir después"
             />
           </Field>
           <Field>

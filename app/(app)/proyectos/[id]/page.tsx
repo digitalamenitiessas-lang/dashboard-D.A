@@ -26,11 +26,7 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import {
-  PaymentStatusChip,
-  PriorityChip,
-  StatusChip,
-} from '@/components/shared/status-chip'
+import { PriorityChip, StatusChip } from '@/components/shared/status-chip'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
 import { DetailCard, InfoRow, TodoList } from '@/components/proyectos/detail-parts'
@@ -41,7 +37,6 @@ import { EditInfrastructureDialog } from '@/components/proyectos/edit-infrastruc
 import { InfraCostsCard } from '@/components/proyectos/infra-costs-card'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
 import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
-import { CollectPaymentDialog } from '@/components/cobros/collect-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
 import { projectFinance, nextMaintenanceCharge } from '@/lib/derive'
@@ -64,7 +59,6 @@ export default function ProjectDetailPage() {
     updateProjectStatus,
   } = useStore()
   const [payDialogOpen, setPayDialogOpen] = React.useState(false)
-  const [collectTarget, setCollectTarget] = React.useState<Payment | null>(null)
   const [editPayTarget, setEditPayTarget] = React.useState<Payment | null>(null)
   const [editOpen, setEditOpen] = React.useState(false)
   const [devOpen, setDevOpen] = React.useState(false)
@@ -92,7 +86,7 @@ export default function ProjectDetailPage() {
   const fin = projectFinance(project, payments, maintenanceCharges)
   const projectPayments = payments
     .filter((p) => p.projectId === project.id)
-    .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+    .sort((a, b) => b.paidDate.localeCompare(a.paidDate))
   const projectCharges = maintenanceCharges.filter(
     (c) => c.projectId === project.id,
   )
@@ -368,8 +362,9 @@ export default function ProjectDetailPage() {
                   <TableRow>
                     <TableHead>Concepto</TableHead>
                     <TableHead>Monto</TableHead>
-                    <TableHead>Vencimiento</TableHead>
-                    <TableHead>Estado</TableHead>
+                    <TableHead>Fecha de pago</TableHead>
+                    <TableHead>Medio</TableHead>
+                    <TableHead>Comprobante</TableHead>
                     <TableHead className="text-right">Acción</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -381,26 +376,16 @@ export default function ProjectDetailPage() {
                         {formatMoney(pay.amount, pay.currency)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {formatDate(pay.dueDate)}
+                        {formatDate(pay.paidDate)}
                       </TableCell>
-                      <TableCell>
-                        <PaymentStatusChip status={pay.status} />
+                      <TableCell className="text-muted-foreground">
+                        {pay.method ?? '—'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {pay.receipt ?? '—'}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-2">
-                          {pay.status !== 'Cobrado' ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setCollectTarget(pay)}
-                            >
-                              Cobrar
-                            </Button>
-                          ) : (
-                            <span className="text-xs text-muted-foreground">
-                              {formatDate(pay.paidDate)}
-                            </span>
-                          )}
                           <Button
                             size="icon-sm"
                             variant="ghost"
@@ -637,14 +622,6 @@ export default function ProjectDetailPage() {
       </Tabs>
 
       <Separator className="opacity-0" />
-
-      {collectTarget ? (
-        <CollectPaymentDialog
-          payment={collectTarget}
-          open={!!collectTarget}
-          onOpenChange={(o) => !o && setCollectTarget(null)}
-        />
-      ) : null}
 
       {editPayTarget ? (
         <EditPaymentDialog

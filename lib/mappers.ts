@@ -2,6 +2,7 @@
 // domain types the UI works with (camelCase, nested).
 
 import type {
+  Account,
   ActivityEntry,
   Client,
   Development,
@@ -9,6 +10,7 @@ import type {
   Infrastructure,
   Maintenance,
   MaintenanceCharge,
+  MoneyMovement,
   Note,
   Payment,
   Project,
@@ -139,12 +141,11 @@ export function mapPayment(r: Row): Payment {
     concept: str(r.concept),
     amount: num(r.amount),
     currency: r.currency ?? 'USD',
-    dueDate: r.due_date,
-    paidDate: r.paid_date ?? null,
+    paidDate: r.paid_date,
     method: r.method ?? null,
-    status: r.status ?? 'Pendiente',
     receipt: r.receipt ?? null,
     notes: str(r.notes),
+    accountId: r.account_id ?? null,
   }
 }
 
@@ -157,6 +158,34 @@ export function mapMaintenanceCharge(r: Row): MaintenanceCharge {
     currency: r.currency ?? 'USD',
     method: r.method ?? null,
     receipt: r.receipt ?? null,
+    notes: str(r.notes),
+    accountId: r.account_id ?? null,
+  }
+}
+
+export function mapAccount(r: Row): Account {
+  return {
+    id: r.id,
+    name: str(r.name),
+    kind: r.kind ?? 'Banco',
+    currency: r.currency ?? 'ARS',
+    notes: str(r.notes),
+    archived: Boolean(r.archived),
+    sortOrder: num(r.sort_order),
+  }
+}
+
+export function mapMovement(r: Row): MoneyMovement {
+  return {
+    id: r.id,
+    movedOn: r.moved_on,
+    category: r.category ?? 'Transferencia',
+    concept: str(r.concept),
+    fromAccountId: r.from_account_id ?? null,
+    amountOut: num(r.amount_out),
+    toAccountId: r.to_account_id ?? null,
+    amountIn: num(r.amount_in),
+    projectId: r.project_id ?? null,
     notes: str(r.notes),
   }
 }
@@ -265,11 +294,35 @@ export function paymentToRow(p: Partial<Payment>): Row {
     concept: 'concept',
     amount: 'amount',
     currency: 'currency',
-    dueDate: 'due_date',
     paidDate: 'paid_date',
     method: 'method',
-    status: 'status',
     receipt: 'receipt',
+    notes: 'notes',
+    accountId: 'account_id',
+  })
+}
+
+export function accountToRow(a: Partial<Account>): Row {
+  return pick(a, {
+    name: 'name',
+    kind: 'kind',
+    currency: 'currency',
+    notes: 'notes',
+    archived: 'archived',
+    sortOrder: 'sort_order',
+  })
+}
+
+export function movementToRow(m: Partial<MoneyMovement>): Row {
+  return pick(m, {
+    movedOn: 'moved_on',
+    category: 'category',
+    concept: 'concept',
+    fromAccountId: 'from_account_id',
+    amountOut: 'amount_out',
+    toAccountId: 'to_account_id',
+    amountIn: 'amount_in',
+    projectId: 'project_id',
     notes: 'notes',
   })
 }

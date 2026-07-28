@@ -53,11 +53,11 @@ const levelText: Record<AlertLevel, string> = {
 }
 
 export default function AlertasPage() {
-  const { projects, payments, notes, activity, tasks } = useStore()
+  const { projects, notes, activity, tasks } = useStore()
   const [levelFilter, setLevelFilter] = React.useState<string>('todas')
   const [categoryFilter, setCategoryFilter] = React.useState('todas')
 
-  const alerts = buildAlerts({ projects, payments, notes, tasks })
+  const alerts = buildAlerts({ projects, notes, tasks })
 
   const categories = Array.from(new Set(alerts.map((a) => a.category))).sort()
 

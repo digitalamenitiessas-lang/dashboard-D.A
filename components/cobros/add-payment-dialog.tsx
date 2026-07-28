@@ -19,11 +19,21 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { SimpleSelect } from '@/components/shared/simple-select'
+import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
-import type { Currency, PaymentStatus } from '@/lib/types'
+import type { Currency, PaymentMethod } from '@/lib/types'
 
 const currencies: Currency[] = ['USD', 'ARS', 'EUR']
-const statuses: PaymentStatus[] = ['Pendiente', 'Cobrado', 'Vencido']
+const methods: PaymentMethod[] = [
+  'Transferencia',
+  'Efectivo',
+  'Tarjeta',
+  'Mercado Pago',
+  'Crypto',
+  'PayPal',
+]
+
+const todayIso = () => new Date().toISOString().slice(0, 10)
 
 export function AddPaymentDialog({
   open,
@@ -34,19 +44,28 @@ export function AddPaymentDialog({
   onOpenChange: (open: boolean) => void
   defaultProjectId?: string
 }) {
-  const { projects, addPayment } = useStore()
+  const { projects, accounts, addPayment } = useStore()
   const [projectId, setProjectId] = React.useState(defaultProjectId ?? '')
   const [concept, setConcept] = React.useState('')
   const [amount, setAmount] = React.useState('')
   const [currency, setCurrency] = React.useState<Currency>('USD')
-  const [dueDate, setDueDate] = React.useState('')
-  const [status, setStatus] = React.useState<PaymentStatus>('Pendiente')
+  const [paidDate, setPaidDate] = React.useState(todayIso())
+  const [method, setMethod] = React.useState<PaymentMethod>('Transferencia')
+  const [receipt, setReceipt] = React.useState('')
+  const [accountId, setAccountId] = React.useState('')
 
   React.useEffect(() => {
     if (open && defaultProjectId) setProjectId(defaultProjectId)
   }, [open, defaultProjectId])
 
-  const valid = projectId && concept.trim() && Number(amount) > 0 && dueDate
+  // An account holds one currency, so switching the currency can leave a
+  // now-invalid account selected.
+  React.useEffect(() => {
+    const picked = accounts.find((a) => a.id === accountId)
+    if (picked && picked.currency !== currency) setAccountId('')
+  }, [currency, accountId, accounts])
+
+  const valid = projectId && concept.trim() && Number(amount) > 0 && paidDate
 
   async function submit() {
     if (!valid) return
@@ -55,17 +74,16 @@ export function AddPaymentDialog({
       concept: concept.trim(),
       amount: Number(amount),
       currency,
-      dueDate,
-      paidDate: status === 'Cobrado' ? dueDate : null,
-      method: null,
-      status,
-      receipt: null,
+      paidDate,
+      method,
+      receipt: receipt.trim() || null,
       notes: '',
+      accountId: accountId || null,
     })
     setConcept('')
     setAmount('')
-    setDueDate('')
-    setStatus('Pendiente')
+    setPaidDate(todayIso())
+    setReceipt('')
     onOpenChange(false)
   }
 
@@ -83,7 +101,8 @@ export function AddPaymentDialog({
         <DialogHeader>
           <DialogTitle>Registrar pago</DialogTitle>
           <DialogDescription>
-            Definí el concepto, monto y vencimiento del cobro.
+            Un pago es plata que ya entró: cargá el concepto, el monto y la
+            fecha en que la cobraste.
           </DialogDescription>
         </DialogHeader>
         <FieldGroup>
@@ -129,23 +148,43 @@ export function AddPaymentDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <Field>
-              <FieldLabel htmlFor="pay-due">Vencimiento</FieldLabel>
+              <FieldLabel htmlFor="pay-paid">Fecha de pago</FieldLabel>
               <Input
-                id="pay-due"
+                id="pay-paid"
                 type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                value={paidDate}
+                onChange={(e) => setPaidDate(e.target.value)}
               />
             </Field>
             <Field>
-              <FieldLabel>Estado</FieldLabel>
+              <FieldLabel>Medio de pago</FieldLabel>
               <SimpleSelect
-                value={status}
-                onValueChange={(v) => setStatus(v as PaymentStatus)}
-                options={statuses.map((s) => ({ value: s, label: s }))}
+                value={method}
+                onValueChange={(v) => setMethod(v as PaymentMethod)}
+                options={methods.map((m) => ({ value: m, label: m }))}
               />
             </Field>
           </div>
+          <Field>
+            <FieldLabel htmlFor="pay-account">¿A qué cuenta entró?</FieldLabel>
+            <AccountSelect
+              id="pay-account"
+              value={accountId}
+              onValueChange={setAccountId}
+              currency={currency}
+              allowNone
+              noneLabel="Definir después"
+            />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="pay-receipt">Comprobante (opcional)</FieldLabel>
+            <Input
+              id="pay-receipt"
+              value={receipt}
+              onChange={(e) => setReceipt(e.target.value)}
+              placeholder="N° de factura o referencia"
+            />
+          </Field>
         </FieldGroup>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>

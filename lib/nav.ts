@@ -1,6 +1,7 @@
 import {
   Bell,
   FolderKanban,
+  Landmark,
   LayoutDashboard,
   Server,
   StickyNote,
@@ -21,6 +22,7 @@ export const navItems: NavItem[] = [
   { label: 'Proyectos', href: '/proyectos', icon: FolderKanban },
   { label: 'Clientes', href: '/clientes', icon: Users },
   { label: 'Cobros', href: '/cobros', icon: Wallet },
+  { label: 'Caja', href: '/caja', icon: Landmark },
   { label: 'Mantenimientos', href: '/mantenimientos', icon: Wrench },
   { label: 'Infraestructura', href: '/infraestructura', icon: Server },
   { label: 'Notas e ideas', href: '/notas', icon: StickyNote },

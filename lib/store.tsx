@@ -5,22 +5,27 @@ import { toast } from 'sonner'
 import { createClient } from './supabase/client'
 import {
   PROJECT_SELECT,
+  accountToRow,
   clientToRow,
   developmentToRow,
   infrastructureToRow,
   maintenanceToRow,
+  mapAccount,
   mapActivity,
   mapClient,
   mapMaintenanceCharge,
+  mapMovement,
   mapNote,
   mapPayment,
   mapProject,
   mapTask,
+  movementToRow,
   noteToRow,
   paymentToRow,
   projectToRow,
 } from './mappers'
 import type {
+  Account,
   ActivityEntry,
   Client,
   Development,
@@ -28,6 +33,7 @@ import type {
   Infrastructure,
   Maintenance,
   MaintenanceCharge,
+  MoneyMovement,
   Note,
   Payment,
   Project,
@@ -64,6 +70,10 @@ interface StoreValue {
   activity: ActivityEntry[]
   tasks: Task[]
   maintenanceCharges: MaintenanceCharge[]
+  accounts: Account[]
+  movements: MoneyMovement[]
+  /** False until `08_caja.sql` has been run on the database. */
+  cajaReady: boolean
   refresh: () => Promise<void>
 
   // projects
@@ -92,10 +102,6 @@ interface StoreValue {
   // payments
   addPayment: (payment: Omit<Payment, 'id'>) => Promise<void>
   updatePayment: (id: string, patch: Partial<Payment>) => Promise<void>
-  markPaymentPaid: (
-    id: string,
-    data: { paidDate: string; method: Payment['method']; receipt: string | null },
-  ) => Promise<void>
   deletePayment: (id: string) => Promise<void>
 
   // clients
@@ -110,6 +116,17 @@ interface StoreValue {
   updateNote: (id: string, patch: Partial<Note>) => Promise<void>
   deleteNote: (id: string) => Promise<void>
   convertNoteToProject: (noteId: string) => Promise<string | null>
+
+  // caja
+  addAccount: (account: Omit<Account, 'id'>) => Promise<void>
+  updateAccount: (id: string, patch: Partial<Account>) => Promise<void>
+  deleteAccount: (id: string) => Promise<void>
+  addMovement: (movement: Omit<MoneyMovement, 'id'>) => Promise<void>
+  updateMovement: (
+    id: string,
+    patch: Partial<MoneyMovement>,
+  ) => Promise<void>
+  deleteMovement: (id: string) => Promise<void>
 
   // maintenance
   activateMaintenance: (
@@ -127,6 +144,7 @@ interface StoreValue {
       amount: number
       method?: Payment['method']
       receipt?: string | null
+      accountId?: string | null
     },
   ) => Promise<void>
 }
@@ -153,6 +171,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [maintenanceCharges, setMaintenanceCharges] = React.useState<
     MaintenanceCharge[]
   >([])
+  const [accounts, setAccounts] = React.useState<Account[]>([])
+  const [movements, setMovements] = React.useState<MoneyMovement[]>([])
+  const [cajaReady, setCajaReady] = React.useState(true)
 
   /** Surfaces the failure to the user and keeps it out of the happy path. */
   const fail = React.useCallback((action: string, e: unknown) => {
@@ -163,13 +184,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc] = await Promise.all([
+      const [p, c, pay, n, a, t, mc, acc, mov] = await Promise.all([
         supabase
           .from('projects')
           .select(PROJECT_SELECT)
           .order('updated_at', { ascending: false }),
         supabase.from('clients').select('*').order('name'),
-        supabase.from('payments').select('*').order('due_date'),
+        supabase
+          .from('payments')
+          .select('*')
+          .order('paid_date', { ascending: false }),
         supabase.from('notes').select('*').order('created_at', { ascending: false }),
         supabase
           .from('activity')
@@ -181,7 +205,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .from('maintenance_charges')
           .select('*')
           .order('charged_on', { ascending: false }),
+        supabase
+          .from('accounts')
+          .select('*')
+          .order('archived')
+          .order('sort_order')
+          .order('name'),
+        supabase
+          .from('money_movements')
+          .select('*')
+          .order('moved_on', { ascending: false }),
       ])
+
+      // Caja is the newest module: if 08_caja.sql hasn't been run yet its
+      // tables are simply missing. That shouldn't take down the whole app,
+      // so it degrades to an empty Caja that says what to do.
+      const cajaMissing = [acc.error, mov.error].some(
+        (e) => e && (e.code === 'PGRST205' || /does not exist/i.test(e.message)),
+      )
+      setCajaReady(!cajaMissing)
 
       const firstError =
         p.error ||
@@ -190,7 +232,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         n.error ||
         a.error ||
         t.error ||
-        mc.error
+        mc.error ||
+        (cajaMissing ? null : acc.error || mov.error)
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -200,6 +243,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setActivity((a.data ?? []).map(mapActivity))
       setTasks((t.data ?? []).map(mapTask))
       setMaintenanceCharges((mc.data ?? []).map(mapMaintenanceCharge))
+      setAccounts((acc.data ?? []).map(mapAccount))
+      setMovements((mov.data ?? []).map(mapMovement))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -510,38 +555,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, fail],
   )
 
-  const markPaymentPaid = React.useCallback(
-    async (
-      id: string,
-      data: { paidDate: string; method: Payment['method']; receipt: string | null },
-    ) => {
-      try {
-        const { data: row, error } = await supabase
-          .from('payments')
-          .update({
-            status: 'Cobrado',
-            paid_date: data.paidDate,
-            method: data.method,
-            receipt: data.receipt,
-          })
-          .eq('id', id)
-          .select()
-          .single()
-        if (error) throw error
-        const mapped = mapPayment(row)
-        setPayments((prev) => prev.map((p) => (p.id === id ? mapped : p)))
-        await logActivity({
-          projectId: mapped.projectId,
-          type: 'pago',
-          message: `Cobro registrado: ${mapped.concept}`,
-        })
-      } catch (e) {
-        fail('registrar el cobro', e)
-      }
-    },
-    [supabase, logActivity, fail],
-  )
-
   const deletePayment = React.useCallback(
     async (id: string) => {
       try {
@@ -721,6 +734,134 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   )
 
   // -------------------------------------------------------------------
+  // Caja: accounts and movements
+  // -------------------------------------------------------------------
+  const sortAccounts = (list: Account[]) =>
+    [...list].sort(
+      (a, b) =>
+        Number(a.archived) - Number(b.archived) ||
+        a.sortOrder - b.sortOrder ||
+        a.name.localeCompare(b.name),
+    )
+
+  const addAccount = React.useCallback(
+    async (account: Omit<Account, 'id'>) => {
+      try {
+        const { data, error } = await supabase
+          .from('accounts')
+          .insert(accountToRow(account))
+          .select()
+          .single()
+        if (error) throw error
+        setAccounts((prev) => sortAccounts([...prev, mapAccount(data)]))
+      } catch (e) {
+        fail('crear la cuenta', e)
+      }
+    },
+    [supabase, fail],
+  )
+
+  const updateAccount = React.useCallback(
+    async (id: string, patch: Partial<Account>) => {
+      try {
+        const row = accountToRow(patch)
+        if (Object.keys(row).length === 0) return
+        const { data, error } = await supabase
+          .from('accounts')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        setAccounts((prev) =>
+          sortAccounts(prev.map((a) => (a.id === id ? mapAccount(data) : a))),
+        )
+      } catch (e) {
+        fail('guardar la cuenta', e)
+      }
+    },
+    [supabase, fail],
+  )
+
+  const deleteAccount = React.useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase.from('accounts').delete().eq('id', id)
+        if (error) throw error
+        setAccounts((prev) => prev.filter((a) => a.id !== id))
+        // Cobros pointing at it were cleared by the FK rule.
+        await refresh()
+      } catch (e) {
+        // The FK on movements is RESTRICT: an account with history can't
+        // be deleted, only archived.
+        fail('eliminar la cuenta', e)
+      }
+    },
+    [supabase, refresh, fail],
+  )
+
+  const addMovement = React.useCallback(
+    async (movement: Omit<MoneyMovement, 'id'>) => {
+      try {
+        const { data, error } = await supabase
+          .from('money_movements')
+          .insert(movementToRow(movement))
+          .select()
+          .single()
+        if (error) throw error
+        setMovements((prev) =>
+          [mapMovement(data), ...prev].sort((a, b) =>
+            b.movedOn.localeCompare(a.movedOn),
+          ),
+        )
+      } catch (e) {
+        fail('registrar el movimiento', e)
+      }
+    },
+    [supabase, fail],
+  )
+
+  const updateMovement = React.useCallback(
+    async (id: string, patch: Partial<MoneyMovement>) => {
+      try {
+        const row = movementToRow(patch)
+        if (Object.keys(row).length === 0) return
+        const { data, error } = await supabase
+          .from('money_movements')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        setMovements((prev) =>
+          prev
+            .map((m) => (m.id === id ? mapMovement(data) : m))
+            .sort((a, b) => b.movedOn.localeCompare(a.movedOn)),
+        )
+      } catch (e) {
+        fail('guardar el movimiento', e)
+      }
+    },
+    [supabase, fail],
+  )
+
+  const deleteMovement = React.useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase
+          .from('money_movements')
+          .delete()
+          .eq('id', id)
+        if (error) throw error
+        setMovements((prev) => prev.filter((m) => m.id !== id))
+      } catch (e) {
+        fail('eliminar el movimiento', e)
+      }
+    },
+    [supabase, fail],
+  )
+
+  // -------------------------------------------------------------------
   // Maintenance
   // -------------------------------------------------------------------
   const updateMaintenance = React.useCallback(
@@ -782,6 +923,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         amount: number
         method?: Payment['method']
         receipt?: string | null
+        accountId?: string | null
       },
     ) => {
       try {
@@ -795,6 +937,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             currency: project?.maintenance.currency ?? 'USD',
             method: data.method ?? null,
             receipt: data.receipt ?? null,
+            account_id: data.accountId ?? null,
           })
           .select()
           .single()
@@ -834,6 +977,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     activity,
     tasks,
     maintenanceCharges,
+    accounts,
+    movements,
+    cajaReady,
     refresh,
     addProject,
     updateProject,
@@ -848,7 +994,6 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     deleteInfraCost,
     addPayment,
     updatePayment,
-    markPaymentPaid,
     deletePayment,
     addClient,
     updateClient,
@@ -857,6 +1002,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     updateNote,
     deleteNote,
     convertNoteToProject,
+    addAccount,
+    updateAccount,
+    deleteAccount,
+    addMovement,
+    updateMovement,
+    deleteMovement,
     activateMaintenance,
     updateMaintenance,
     collectMaintenance,

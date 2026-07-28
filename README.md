@@ -45,8 +45,12 @@ de Supabase, en orden:
 | `04_seed.sql` | Datos de ejemplo — *opcional*, saltealo si vas con datos reales |
 | `05_dev_anon_policies.sql` | Sólo desarrollo: abre acceso al rol `anon` |
 | `06_tareas_y_notas.sql` | Tareas por proyecto y notas vinculadas |
+| `07_pagos_sin_vencimiento.sql` | Saca `due_date` y `status` de `payments` |
+| `08_caja.sql` | Cuentas y movimientos de dinero |
 
-Para una instalación nueva alcanza con **03** y **06**.
+Para una instalación nueva alcanza con **03**, **06** y **08**: el 03 ya crea
+`payments` con la forma final. El **07** es la migración para una base creada
+antes de ese cambio. Los dos últimos son idempotentes.
 
 ### 4. Usuario y seguridad
 
@@ -78,6 +82,7 @@ lib/store.tsx     Estado global respaldado por Supabase — useStore()
 lib/mappers.ts    Traducción entre filas snake_case y tipos del dominio
 lib/derive.ts     Lógica derivada: finanzas, próximo cobro, motor de alertas
 lib/money.ts      Totales por moneda (nunca se suman monedas distintas)
+lib/caja.ts       Saldos por cuenta y detalle de movimientos
 lib/types.ts      Modelo de dominio (los enums espejan los de Postgres)
 supabase/         Scripts SQL versionados
 ```
@@ -99,3 +104,17 @@ supabase/         Scripts SQL versionados
 - Los cobros de mantenimiento viven en `maintenance_charges`, aparte de
   `payments`. Suman a los ingresos, pero **no** al saldo pendiente: lo
   pendiente siempre se mide contra lo cotizado del proyecto.
+- **Un pago es plata que ya entró.** `payments` no tiene vencimiento ni
+  estado: sólo `paid_date`. No existen los pagos pendientes ni vencidos, así
+  que tampoco hay alertas de atraso de cobro — `buildAlerts()` sólo mira
+  mantenimientos, proyectos, dominios y notas. El saldo pendiente sale de
+  restar lo cobrado a lo cotizado, no de pagos agendados.
+- **Los saldos de la caja nunca se guardan.** `accountBalances()` los calcula
+  sumando los cobros asignados a cada cuenta más lo que entró por movimientos,
+  menos lo que salió. Por eso Cobros y Caja no pueden desincronizarse: no hay
+  nada que sincronizar. Un cobro sin `account_id` simplemente no suma a ningún
+  saldo, y la pantalla de Caja lo avisa.
+- **Una cuenta tiene una sola moneda**, y cada monto de un movimiento va en la
+  moneda de *su* cuenta. Por eso un cambio de dólares a pesos es un movimiento
+  de una cuenta USD a una ARS con dos montos distintos: la cotización de esa
+  operación queda registrada como dato real, no estimada.

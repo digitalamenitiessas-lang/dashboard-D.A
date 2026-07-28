@@ -31,8 +31,6 @@ create type payment_method as enum (
   'Transferencia', 'Efectivo', 'Tarjeta', 'Mercado Pago', 'Crypto', 'PayPal'
 );
 
-create type payment_status as enum ('Pendiente', 'Cobrado', 'Vencido');
-
 create type maintenance_status as enum ('Activo', 'Pausado', 'Cancelado');
 
 create type maintenance_frequency as enum ('Mensual', 'Trimestral', 'Semestral', 'Anual');
@@ -159,6 +157,8 @@ create table project_maintenance (
 
 -- ---------------------------------------------------------------------
 -- Pagos del proyecto
+-- Un pago es plata que YA entró: no hay vencimiento ni estado, sólo la
+-- fecha en que se cobró.
 -- ---------------------------------------------------------------------
 create table payments (
   id         uuid primary key default gen_random_uuid(),
@@ -166,18 +166,15 @@ create table payments (
   concept    text not null,
   amount     numeric(12,2) not null default 0,
   currency   currency not null default 'USD',
-  due_date   date not null,
-  paid_date  date,
+  paid_date  date not null,
   method     payment_method,
-  status     payment_status not null default 'Pendiente',
   receipt    text,
   notes      text not null default '',
   created_at timestamptz not null default now()
 );
 
 create index payments_project_id_idx on payments (project_id);
-create index payments_due_date_idx   on payments (due_date);
-create index payments_status_idx     on payments (status);
+create index payments_paid_date_idx  on payments (paid_date desc);
 
 
 -- ---------------------------------------------------------------------

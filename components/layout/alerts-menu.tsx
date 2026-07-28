@@ -19,8 +19,8 @@ const dot: Record<AlertLevel, string> = {
 }
 
 export function AlertsMenu() {
-  const { projects, payments, notes, tasks } = useStore()
-  const alerts = buildAlerts({ projects, payments, notes, tasks })
+  const { projects, notes, tasks } = useStore()
+  const alerts = buildAlerts({ projects, notes, tasks })
   const criticalCount = alerts.filter((a) => a.level === 'critical').length
 
   return (

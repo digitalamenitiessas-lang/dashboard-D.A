@@ -53,14 +53,6 @@ export function AppShell({
         <div className="flex-1 overflow-y-auto px-3 py-4">
           <SidebarNav />
         </div>
-        <div className="border-t border-white/5 p-4">
-          <div className="glass rounded-xl p-3">
-            <p className="text-xs font-medium text-foreground">Modo demo</p>
-            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-              Datos simulados. Listo para conectar a Supabase.
-            </p>
-          </div>
-        </div>
       </aside>
 
       {/* Main column */}
