@@ -1,0 +1,294 @@
+// Translation layer between Supabase rows (snake_case, flat-ish) and the
+// domain types the UI works with (camelCase, nested).
+
+import type {
+  ActivityEntry,
+  Client,
+  Development,
+  InfraCost,
+  Infrastructure,
+  Maintenance,
+  Note,
+  Payment,
+  Project,
+  Task,
+} from './types'
+
+/** Untyped Supabase row; the mappers below are the typed boundary. */
+type Row = Record<string, any>
+
+/** PostgREST returns embedded to-one relations as an object or a 1-item array. */
+function one(value: unknown): Row | undefined {
+  if (Array.isArray(value)) return value[0]
+  return (value as Row) ?? undefined
+}
+
+const num = (v: unknown, fallback = 0) =>
+  v === null || v === undefined ? fallback : Number(v)
+
+const str = (v: unknown, fallback = '') =>
+  v === null || v === undefined ? fallback : String(v)
+
+export function mapClient(r: Row): Client {
+  return {
+    id: r.id,
+    name: str(r.name),
+    contactPerson: str(r.contact_person),
+    phone: str(r.phone),
+    email: str(r.email),
+    notes: str(r.notes),
+  }
+}
+
+export function mapTask(r: Row): Task {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    kind: r.kind,
+    title: str(r.title),
+    done: Boolean(r.done),
+    doneAt: r.done_at ?? null,
+    createdAt: r.created_at,
+  }
+}
+
+export function mapInfraCost(r: Row): InfraCost {
+  return {
+    id: r.id,
+    concept: str(r.concept),
+    amount: num(r.amount),
+    currency: r.currency ?? 'USD',
+    frequency: r.frequency ?? 'Mensual',
+  }
+}
+
+function mapDevelopment(r: Row | undefined): Development {
+  return {
+    stage: str(r?.stage),
+    progress: num(r?.progress),
+    nextGoal: str(r?.next_goal),
+    lastUpdate: r?.last_update ?? null,
+  }
+}
+
+function mapInfrastructure(r: Row | undefined, costs: Row[]): Infrastructure {
+  return {
+    productionUrl: str(r?.production_url),
+    stagingUrl: str(r?.staging_url),
+    repo: str(r?.repo),
+    deployPlatform: str(r?.deploy_platform),
+    hosting: str(r?.hosting),
+    domain: str(r?.domain),
+    domainExpiry: r?.domain_expiry ?? null,
+    database: str(r?.database),
+    externalServices: r?.external_services ?? [],
+    automations: r?.automations ?? [],
+    techLead: str(r?.tech_lead),
+    costs: costs.map(mapInfraCost),
+  }
+}
+
+function mapMaintenance(r: Row | undefined): Maintenance {
+  return {
+    active: Boolean(r?.active),
+    implementationDate: r?.implementation_date ?? null,
+    startDate: r?.start_date ?? null,
+    amount: num(r?.amount),
+    currency: r?.currency ?? 'USD',
+    frequency: r?.frequency ?? 'Mensual',
+    dueDay: num(r?.due_day, 1),
+    services: r?.services ?? [],
+    status: r?.status ?? 'Pausado',
+    lastCollectedDate: r?.last_collected_date ?? null,
+  }
+}
+
+export function mapProject(r: Row): Project {
+  return {
+    id: r.id,
+    name: str(r.name),
+    description: str(r.description),
+    type: r.type ?? 'terceros',
+    clientId: r.client_id ?? null,
+    ownerName: str(r.owner_name),
+    contactPerson: str(r.contact_person),
+    internalLead: str(r.internal_lead),
+    status: r.status ?? 'Idea',
+    priority: r.priority ?? 'Media',
+    startDate: r.start_date ?? null,
+    estimatedDelivery: r.estimated_delivery ?? null,
+    implementationDate: r.implementation_date ?? null,
+    quotedAmount: num(r.quoted_amount),
+    currency: r.currency ?? 'USD',
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    development: mapDevelopment(one(r.project_development)),
+    infrastructure: mapInfrastructure(
+      one(r.project_infrastructure),
+      r.infrastructure_costs ?? [],
+    ),
+    maintenance: mapMaintenance(one(r.project_maintenance)),
+  }
+}
+
+export function mapPayment(r: Row): Payment {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    concept: str(r.concept),
+    amount: num(r.amount),
+    currency: r.currency ?? 'USD',
+    dueDate: r.due_date,
+    paidDate: r.paid_date ?? null,
+    method: r.method ?? null,
+    status: r.status ?? 'Pendiente',
+    receipt: r.receipt ?? null,
+    notes: str(r.notes),
+  }
+}
+
+export function mapNote(r: Row): Note {
+  return {
+    id: r.id,
+    title: str(r.title),
+    content: str(r.content),
+    author: str(r.author),
+    priority: r.priority ?? 'Media',
+    tags: r.tags ?? [],
+    category: r.category ?? 'Idea',
+    createdAt: r.created_at,
+    reminderDate: r.reminder_date ?? null,
+    convertedToProjectId: r.converted_to_project_id ?? null,
+    projectId: r.project_id ?? null,
+  }
+}
+
+export function mapActivity(r: Row): ActivityEntry {
+  return {
+    id: r.id,
+    projectId: r.project_id ?? null,
+    type: r.type,
+    message: str(r.message),
+    date: r.date,
+  }
+}
+
+// ---------------------------------------------------------------------
+// Domain -> row, for writes. Only defined keys are sent, so these double
+// as partial-update builders.
+// ---------------------------------------------------------------------
+
+function pick(source: Record<string, unknown>, map: Record<string, string>) {
+  const row: Row = {}
+  for (const [domainKey, column] of Object.entries(map)) {
+    if (source[domainKey] !== undefined) row[column] = source[domainKey]
+  }
+  return row
+}
+
+export function projectToRow(p: Partial<Project>): Row {
+  return pick(p, {
+    name: 'name',
+    description: 'description',
+    type: 'type',
+    clientId: 'client_id',
+    ownerName: 'owner_name',
+    contactPerson: 'contact_person',
+    internalLead: 'internal_lead',
+    status: 'status',
+    priority: 'priority',
+    startDate: 'start_date',
+    estimatedDelivery: 'estimated_delivery',
+    implementationDate: 'implementation_date',
+    quotedAmount: 'quoted_amount',
+    currency: 'currency',
+  })
+}
+
+export function developmentToRow(d: Partial<Development>): Row {
+  return pick(d, {
+    stage: 'stage',
+    progress: 'progress',
+    nextGoal: 'next_goal',
+    lastUpdate: 'last_update',
+  })
+}
+
+export function infrastructureToRow(i: Partial<Infrastructure>): Row {
+  return pick(i, {
+    productionUrl: 'production_url',
+    stagingUrl: 'staging_url',
+    repo: 'repo',
+    deployPlatform: 'deploy_platform',
+    hosting: 'hosting',
+    domain: 'domain',
+    domainExpiry: 'domain_expiry',
+    database: 'database',
+    externalServices: 'external_services',
+    automations: 'automations',
+    techLead: 'tech_lead',
+  })
+}
+
+export function maintenanceToRow(m: Partial<Maintenance>): Row {
+  return pick(m, {
+    active: 'active',
+    implementationDate: 'implementation_date',
+    startDate: 'start_date',
+    amount: 'amount',
+    currency: 'currency',
+    frequency: 'frequency',
+    dueDay: 'due_day',
+    services: 'services',
+    status: 'status',
+    lastCollectedDate: 'last_collected_date',
+  })
+}
+
+export function paymentToRow(p: Partial<Payment>): Row {
+  return pick(p, {
+    projectId: 'project_id',
+    concept: 'concept',
+    amount: 'amount',
+    currency: 'currency',
+    dueDate: 'due_date',
+    paidDate: 'paid_date',
+    method: 'method',
+    status: 'status',
+    receipt: 'receipt',
+    notes: 'notes',
+  })
+}
+
+export function clientToRow(c: Partial<Client>): Row {
+  return pick(c, {
+    name: 'name',
+    contactPerson: 'contact_person',
+    phone: 'phone',
+    email: 'email',
+    notes: 'notes',
+  })
+}
+
+export function noteToRow(n: Partial<Note>): Row {
+  return pick(n, {
+    title: 'title',
+    content: 'content',
+    author: 'author',
+    priority: 'priority',
+    tags: 'tags',
+    category: 'category',
+    reminderDate: 'reminder_date',
+    convertedToProjectId: 'converted_to_project_id',
+    projectId: 'project_id',
+  })
+}
+
+/** Columns needed to rebuild a full Project, including its 1:1 children. */
+export const PROJECT_SELECT = `
+  *,
+  project_development(*),
+  project_infrastructure(*),
+  project_maintenance(*),
+  infrastructure_costs(*)
+`
