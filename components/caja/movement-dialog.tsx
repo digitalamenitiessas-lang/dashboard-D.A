@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
+import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
 import { formatMoney } from '@/lib/format'
@@ -227,13 +228,10 @@ export function MovementDialog({
                   <FieldLabel htmlFor="mov-out">
                     Monto{fromAccount ? ` (${fromAccount.currency})` : ''}
                   </FieldLabel>
-                  <Input
+                  <MoneyInput
                     id="mov-out"
-                    type="number"
-                    min="0"
-                    step="0.01"
                     value={amountOut}
-                    onChange={(e) => changeAmountOut(e.target.value)}
+                    onValueChange={changeAmountOut}
                     placeholder="0"
                   />
                 </Field>
@@ -246,13 +244,11 @@ export function MovementDialog({
                   Cotización — 1 {fromAccount?.currency} en{' '}
                   {toAccount?.currency}
                 </FieldLabel>
-                <Input
+                <MoneyInput
                   id="mov-rate"
-                  type="number"
-                  min="0"
-                  step="any"
                   value={rate}
-                  onChange={(e) => changeRate(e.target.value)}
+                  onValueChange={changeRate}
+                  decimals={6}
                   placeholder="0"
                 />
               </Field>
@@ -273,13 +269,10 @@ export function MovementDialog({
                   <FieldLabel htmlFor="mov-in">
                     Monto{toAccount ? ` (${toAccount.currency})` : ''}
                   </FieldLabel>
-                  <Input
+                  <MoneyInput
                     id="mov-in"
-                    type="number"
-                    min="0"
-                    step="0.01"
                     value={amountIn}
-                    onChange={(e) => changeAmountIn(e.target.value)}
+                    onValueChange={changeAmountIn}
                     placeholder="0"
                     disabled={sameCurrency}
                   />

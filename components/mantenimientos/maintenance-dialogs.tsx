@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
+import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
 import { formatMoney } from '@/lib/format'
@@ -90,12 +91,10 @@ export function ActivateMaintenanceDialog({
           <div className="grid grid-cols-2 gap-4">
             <Field>
               <FieldLabel htmlFor="am-amount">Importe</FieldLabel>
-              <Input
+              <MoneyInput
                 id="am-amount"
-                type="number"
-                min="0"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onValueChange={setAmount}
                 placeholder="0"
               />
             </Field>
@@ -219,12 +218,10 @@ export function CollectMaintenanceDialog({
             </Field>
             <Field>
               <FieldLabel htmlFor="cm-amount">Importe</FieldLabel>
-              <Input
+              <MoneyInput
                 id="cm-amount"
-                type="number"
-                min="0"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onValueChange={setAmount}
               />
             </Field>
           </div>

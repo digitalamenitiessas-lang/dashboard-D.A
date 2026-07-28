@@ -29,6 +29,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/u
 import { PriorityChip, StatusChip } from '@/components/shared/status-chip'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
+import { LinkedText } from '@/components/shared/linked-text'
 import { DetailCard, InfoRow, TodoList } from '@/components/proyectos/detail-parts'
 import { TaskList } from '@/components/proyectos/task-list'
 import { EditProjectDialog } from '@/components/proyectos/edit-project-dialog'
@@ -142,11 +143,35 @@ export default function ProjectDetailPage() {
               {project.name}
             </h1>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground text-pretty">
-              {project.description}
+              <LinkedText text={project.description} />
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <StatusChip status={project.status} />
               <PriorityChip priority={project.priority} />
+              {/* The production URL is the link you actually want at hand,
+                  so it sits here instead of only inside Infraestructura. */}
+              {infra.productionUrl ? (
+                <a
+                  href={infra.productionUrl}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-neon-blue/25 bg-neon-blue/10 px-2.5 py-1 text-xs font-medium text-neon-blue transition-colors hover:border-neon-green/30 hover:bg-neon-green/10 hover:text-neon-green"
+                >
+                  <ExternalLink className="size-3" />
+                  Abrir proyecto
+                </a>
+              ) : null}
+              {infra.repo ? (
+                <a
+                  href={infra.repo}
+                  target="_blank"
+                  rel="noreferrer noopener"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <GitBranch className="size-3" />
+                  Repo
+                </a>
+              ) : null}
               <span className="text-xs text-muted-foreground">
                 Actualizado {relativeDays(project.updatedAt).toLowerCase()}
               </span>

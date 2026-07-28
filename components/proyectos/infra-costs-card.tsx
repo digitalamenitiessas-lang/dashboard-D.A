@@ -5,6 +5,7 @@ import { CircleDollarSign, Plus, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
+import { MoneyInput } from '@/components/shared/money-input'
 import { DetailCard } from '@/components/proyectos/detail-parts'
 import { useStore } from '@/lib/store'
 import { monthlyInfraCost } from '@/lib/derive'
@@ -88,13 +89,11 @@ export function InfraCostsCard({ project }: { project: Project }) {
           className="h-8"
         />
         <div className="flex items-center gap-2">
-          <Input
-            type="number"
-            min="0"
+          <MoneyInput
             value={amount}
-            onChange={(e) => setAmount(e.target.value)}
+            onValueChange={setAmount}
             placeholder="0"
-            className="h-8 w-24"
+            className="h-8 w-24 tabular-nums"
             aria-label="Importe"
           />
           <SimpleSelect

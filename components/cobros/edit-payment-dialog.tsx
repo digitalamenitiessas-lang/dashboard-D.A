@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
+import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
 import type { Currency, Payment, PaymentMethod } from '@/lib/types'
@@ -106,12 +107,10 @@ export function EditPaymentDialog({
             <div className="grid grid-cols-2 gap-4">
               <Field>
                 <FieldLabel htmlFor="epay-amount">Monto</FieldLabel>
-                <Input
+                <MoneyInput
                   id="epay-amount"
-                  type="number"
-                  min="0"
                   value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
+                  onValueChange={setAmount}
                 />
               </Field>
               <Field>

@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/empty'
 import { Badge } from '@/components/ui/badge'
 import { PageHeader } from '@/components/shared/page-header'
+import { LinkedText } from '@/components/shared/linked-text'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
 import { PriorityChip } from '@/components/shared/status-chip'
@@ -148,7 +149,7 @@ export default function NotasPage() {
                     {note.title}
                   </h2>
                   <p className="mt-1.5 line-clamp-4 text-sm leading-relaxed text-muted-foreground text-pretty">
-                    {note.content}
+                    <LinkedText text={note.content} />
                   </p>
                 </div>
 

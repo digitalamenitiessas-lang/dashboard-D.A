@@ -15,6 +15,7 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
+import { MoneyInput } from '@/components/shared/money-input'
 import { useStore } from '@/lib/store'
 import { PRIORITIES, PROJECT_STATUSES } from '@/lib/types'
 import type { Currency, Priority, Project, ProjectStatus, ProjectType } from '@/lib/types'
@@ -204,12 +205,10 @@ export function EditProjectDialog({
               </Field>
               <Field>
                 <FieldLabel htmlFor="ep-quoted">Importe cotizado</FieldLabel>
-                <Input
+                <MoneyInput
                   id="ep-quoted"
-                  type="number"
-                  min="0"
                   value={quotedAmount}
-                  onChange={(e) => setQuotedAmount(e.target.value)}
+                  onValueChange={setQuotedAmount}
                 />
               </Field>
             </div>

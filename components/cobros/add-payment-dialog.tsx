@@ -19,6 +19,7 @@ import {
   FieldLabel,
 } from '@/components/ui/field'
 import { SimpleSelect } from '@/components/shared/simple-select'
+import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
 import type { Currency, PaymentMethod } from '@/lib/types'
@@ -129,11 +130,10 @@ export function AddPaymentDialog({
           <div className="grid grid-cols-2 gap-4">
             <Field>
               <FieldLabel htmlFor="pay-amount">Monto</FieldLabel>
-              <Input
+              <MoneyInput
                 id="pay-amount"
-                type="number"
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
+                onValueChange={setAmount}
                 placeholder="0"
               />
             </Field>
