@@ -132,6 +132,7 @@ interface StoreValue {
   activateMaintenance: (
     id: string,
     maintenance: Partial<Maintenance>,
+    options?: { markProjectInMaintenance?: boolean },
   ) => Promise<void>
   updateMaintenance: (
     id: string,
@@ -883,7 +884,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   )
 
   const activateMaintenance = React.useCallback(
-    async (id: string, maintenance: Partial<Maintenance>) => {
+    async (
+      id: string,
+      maintenance: Partial<Maintenance>,
+      options?: { markProjectInMaintenance?: boolean },
+    ) => {
       try {
         const { error } = await supabase
           .from('project_maintenance')
@@ -895,11 +900,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .eq('project_id', id)
         if (error) throw error
 
-        const { error: statusError } = await supabase
-          .from('projects')
-          .update({ status: 'En mantenimiento' })
-          .eq('id', id)
-        if (statusError) throw statusError
+        // A plan can be set up before delivery, so the project's status is
+        // only moved when the caller says so.
+        if (options?.markProjectInMaintenance !== false) {
+          const { error: statusError } = await supabase
+            .from('projects')
+            .update({ status: 'En mantenimiento' })
+            .eq('id', id)
+          if (statusError) throw statusError
+        }
 
         await reloadProject(id)
         const project = projects.find((p) => p.id === id)

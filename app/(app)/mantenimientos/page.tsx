@@ -6,6 +6,7 @@ import {
   CalendarClock,
   CircleCheck,
   History,
+  Plus,
   Repeat,
   TriangleAlert,
   Wrench,
@@ -45,6 +46,7 @@ export default function MantenimientosPage() {
   const { projects, maintenanceCharges } = useStore()
   const [activateTarget, setActivateTarget] = React.useState<Project | null>(null)
   const [collectTarget, setCollectTarget] = React.useState<Project | null>(null)
+  const [newPlanOpen, setNewPlanOpen] = React.useState(false)
 
   const active = projects
     .filter((p) => p.maintenance.active && p.maintenance.status === 'Activo')
@@ -94,7 +96,12 @@ export default function MantenimientosPage() {
       <PageHeader
         title="Mantenimientos"
         description="Planes recurrentes, próximos cobros y proyectos listos para activar."
-      />
+      >
+        <Button size="sm" onClick={() => setNewPlanOpen(true)}>
+          <Plus data-icon="inline-start" />
+          Activar mantenimiento
+        </Button>
+      </PageHeader>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
@@ -326,6 +333,13 @@ export default function MantenimientosPage() {
             </Table>
           </div>
         </SectionCard>
+      ) : null}
+
+      {newPlanOpen ? (
+        <ActivateMaintenanceDialog
+          open={newPlanOpen}
+          onOpenChange={setNewPlanOpen}
+        />
       ) : null}
 
       {activateTarget ? (

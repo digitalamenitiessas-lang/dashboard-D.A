@@ -14,6 +14,7 @@ import {
 import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
@@ -38,45 +39,82 @@ const methods: PaymentMethod[] = [
   'PayPal',
 ]
 
+/** Projects already handed over: activating one shouldn't move its status. */
+const DELIVERED = ['Implementado', 'En mantenimiento', 'Finalizado']
+
 export function ActivateMaintenanceDialog({
   project,
   open,
   onOpenChange,
 }: {
-  project: Project
+  /** Omit to let the dialog pick the project — that's the flow from the
+   *  Mantenimientos header, where no project is selected yet. */
+  project?: Project
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { activateMaintenance } = useStore()
-  const m = project.maintenance
-  const [amount, setAmount] = React.useState(String(m.amount || ''))
-  const [currency, setCurrency] = React.useState<Currency>(m.currency)
-  const [frequency, setFrequency] = React.useState<MaintenanceFrequency>(
-    m.frequency,
-  )
-  const [dueDay, setDueDay] = React.useState(String(m.dueDay || 1))
-  const [startDate, setStartDate] = React.useState(
-    m.startDate ?? project.implementationDate ?? todayIso(),
-  )
-  const [services, setServices] = React.useState(m.services.join('\n'))
+  const { projects, activateMaintenance } = useStore()
 
-  const valid = Number(amount) > 0 && Number(dueDay) >= 1 && Number(dueDay) <= 28
+  // Anything without a live plan can get one; being implemented is a hint,
+  // not a gate. Pre-loading a plan before delivery is a legitimate thing.
+  const selectable = projects.filter((p) => !p.maintenance.active)
+  const [projectId, setProjectId] = React.useState(project?.id ?? '')
+  const target = project ?? projects.find((p) => p.id === projectId)
+  const m = target?.maintenance
+
+  const [amount, setAmount] = React.useState(String(m?.amount || ''))
+  const [currency, setCurrency] = React.useState<Currency>(m?.currency ?? 'USD')
+  const [frequency, setFrequency] = React.useState<MaintenanceFrequency>(
+    m?.frequency ?? 'Mensual',
+  )
+  const [dueDay, setDueDay] = React.useState(String(m?.dueDay || 1))
+  const [startDate, setStartDate] = React.useState(
+    m?.startDate ?? project?.implementationDate ?? todayIso(),
+  )
+  const [services, setServices] = React.useState(m?.services.join('\n') ?? '')
+  const [markInMaintenance, setMarkInMaintenance] = React.useState(true)
+
+  // Picking a project mid-dialog re-seeds whatever it already had stored,
+  // and decides whether moving its status makes sense.
+  React.useEffect(() => {
+    if (project || !target) return
+    setAmount(String(target.maintenance.amount || ''))
+    setCurrency(target.maintenance.currency)
+    setFrequency(target.maintenance.frequency)
+    setDueDay(String(target.maintenance.dueDay || 1))
+    setStartDate(
+      target.maintenance.startDate ??
+        target.implementationDate ??
+        todayIso(),
+    )
+    setServices(target.maintenance.services.join('\n'))
+    setMarkInMaintenance(
+      DELIVERED.includes(target.status) || target.implementationDate !== null,
+    )
+  }, [project, target])
+
+  const valid =
+    !!target && Number(amount) > 0 && Number(dueDay) >= 1 && Number(dueDay) <= 28
 
   async function submit() {
-    if (!valid) return
-    await activateMaintenance(project.id, {
-      implementationDate: project.implementationDate ?? startDate,
-      startDate,
-      amount: Number(amount),
-      currency,
-      frequency,
-      dueDay: Number(dueDay),
-      services: services
-        .split('\n')
-        .map((s) => s.trim())
-        .filter(Boolean),
-    })
-    toast.success('Mantenimiento activado', { description: project.name })
+    if (!valid || !target) return
+    await activateMaintenance(
+      target.id,
+      {
+        implementationDate: target.implementationDate ?? startDate,
+        startDate,
+        amount: Number(amount),
+        currency,
+        frequency,
+        dueDay: Number(dueDay),
+        services: services
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      },
+      { markProjectInMaintenance: markInMaintenance },
+    )
+    toast.success('Mantenimiento activado', { description: target.name })
     onOpenChange(false)
   }
 
@@ -85,9 +123,32 @@ export function ActivateMaintenanceDialog({
       <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Activar mantenimiento</DialogTitle>
-          <DialogDescription>{project.name}</DialogDescription>
+          <DialogDescription>
+            {project
+              ? project.name
+              : 'Elegí el proyecto y definí cada cuánto y cuánto se cobra.'}
+          </DialogDescription>
         </DialogHeader>
         <FieldGroup>
+          {!project ? (
+            <Field>
+              <FieldLabel htmlFor="am-project">Proyecto</FieldLabel>
+              <SimpleSelect
+                id="am-project"
+                value={projectId}
+                onValueChange={setProjectId}
+                placeholder={
+                  selectable.length === 0
+                    ? 'Todos tienen plan activo'
+                    : 'Elegir proyecto'
+                }
+                options={selectable.map((p) => ({
+                  value: p.id,
+                  label: `${p.name} · ${p.status}`,
+                }))}
+              />
+            </Field>
+          ) : null}
           <div className="grid grid-cols-2 gap-4">
             <Field>
               <FieldLabel htmlFor="am-amount">Importe</FieldLabel>
@@ -150,6 +211,24 @@ export function ActivateMaintenanceDialog({
               placeholder={'Soporte prioritario\nBackups diarios'}
               rows={3}
             />
+          </Field>
+          <Field>
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">
+                  Pasar el proyecto a «En mantenimiento»
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground text-pretty">
+                  {target
+                    ? `Hoy está en «${target.status}». Desactivalo si querés dejar el plan armado sin mover el estado.`
+                    : 'Cambia el estado del proyecto al activar el plan.'}
+                </p>
+              </div>
+              <Switch
+                checked={markInMaintenance}
+                onCheckedChange={setMarkInMaintenance}
+              />
+            </div>
           </Field>
         </FieldGroup>
         <DialogFooter>
