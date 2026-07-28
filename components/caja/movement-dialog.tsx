@@ -23,6 +23,18 @@ import type { MoneyMovement, MovementCategory } from '@/lib/types'
 
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
+const round = (n: number, decimals: number) => {
+  const factor = 10 ** decimals
+  return Math.round(n * factor) / factor
+}
+
+/**
+ * Rates need far more precision than amounts: USD→ARS is ~1450, but the
+ * same swap the other way round is ~0,00069.
+ */
+const asRate = (n: number) => String(round(n, 6))
+const asAmount = (n: number) => String(round(n, 2))
+
 /**
  * Which sides of a movement each category uses. This is the whole reason
  * the form stays readable: a gasto only ever asks where the money left
@@ -75,6 +87,11 @@ export function MovementDialog({
   const [amountIn, setAmountIn] = React.useState(
     movement ? String(movement.amountIn) : '',
   )
+  const [rate, setRate] = React.useState(
+    movement && movement.amountOut > 0 && movement.amountIn > 0
+      ? asRate(movement.amountIn / movement.amountOut)
+      : '',
+  )
   const [projectId, setProjectId] = React.useState(movement?.projectId ?? '')
   const [notes, setNotes] = React.useState(movement?.notes ?? '')
   const [saving, setSaving] = React.useState(false)
@@ -95,6 +112,35 @@ export function MovementDialog({
     if (sameCurrency) setAmountIn(amountOut)
   }, [sameCurrency, amountOut])
 
+  const crossCurrency = sides.from && sides.to && !!fromAccount && !!toAccount && !sameCurrency
+
+  // Amount, rate and result are three views of the same operation, so
+  // editing any one of them keeps the other two honest. Whichever two the
+  // user happens to know is the pair they can type.
+  function changeAmountOut(value: string) {
+    setAmountOut(value)
+    if (!crossCurrency) return
+    const nextOut = Number(value)
+    if (nextOut <= 0) return
+    if (Number(rate) > 0) setAmountIn(asAmount(nextOut * Number(rate)))
+    else if (Number(amountIn) > 0) setRate(asRate(Number(amountIn) / nextOut))
+  }
+
+  function changeRate(value: string) {
+    setRate(value)
+    const nextRate = Number(value)
+    const nextOut = Number(amountOut)
+    if (nextRate > 0 && nextOut > 0) setAmountIn(asAmount(nextOut * nextRate))
+  }
+
+  function changeAmountIn(value: string) {
+    setAmountIn(value)
+    if (!crossCurrency) return
+    const nextIn = Number(value)
+    const nextOut = Number(amountOut)
+    if (nextIn > 0 && nextOut > 0) setRate(asRate(nextIn / nextOut))
+  }
+
   const out = Number(amountOut)
   const income = Number(amountIn)
   const valid =
@@ -102,11 +148,6 @@ export function MovementDialog({
     (!sides.from || (fromId && out > 0)) &&
     (!sides.to || (toId && income > 0)) &&
     fromId !== toId
-
-  const rate =
-    sides.from && sides.to && out > 0 && income > 0 && !sameCurrency
-      ? income / out
-      : null
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -192,11 +233,29 @@ export function MovementDialog({
                     min="0"
                     step="0.01"
                     value={amountOut}
-                    onChange={(e) => setAmountOut(e.target.value)}
+                    onChange={(e) => changeAmountOut(e.target.value)}
                     placeholder="0"
                   />
                 </Field>
               </div>
+            ) : null}
+
+            {crossCurrency ? (
+              <Field>
+                <FieldLabel htmlFor="mov-rate">
+                  Cotización — 1 {fromAccount?.currency} en{' '}
+                  {toAccount?.currency}
+                </FieldLabel>
+                <Input
+                  id="mov-rate"
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={rate}
+                  onChange={(e) => changeRate(e.target.value)}
+                  placeholder="0"
+                />
+              </Field>
             ) : null}
 
             {sides.to ? (
@@ -220,7 +279,7 @@ export function MovementDialog({
                     min="0"
                     step="0.01"
                     value={amountIn}
-                    onChange={(e) => setAmountIn(e.target.value)}
+                    onChange={(e) => changeAmountIn(e.target.value)}
                     placeholder="0"
                     disabled={sameCurrency}
                   />
@@ -228,13 +287,14 @@ export function MovementDialog({
               </div>
             ) : null}
 
-            {rate ? (
-              <p className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs text-muted-foreground">
-                Cotización de esta operación:{' '}
+            {crossCurrency && out > 0 && income > 0 ? (
+              <p className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs text-muted-foreground text-pretty">
                 <span className="font-medium tabular-nums text-foreground">
-                  1 {fromAccount?.currency} ={' '}
-                  {formatMoney(rate, toAccount?.currency)}
-                </span>
+                  {formatMoney(out, fromAccount?.currency)} →{' '}
+                  {formatMoney(income, toAccount?.currency)}
+                </span>{' '}
+                — completá dos de los tres campos y el tercero se calcula
+                solo.
               </p>
             ) : null}
 
