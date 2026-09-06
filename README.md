@@ -118,3 +118,56 @@ supabase/         Scripts SQL versionados
   moneda de *su* cuenta. Por eso un cambio de dólares a pesos es un movimiento
   de una cuenta USD a una ARS con dos montos distintos: la cotización de esa
   operación queda registrada como dato real, no estimada.
+
+## Notificaciones push
+
+La app no tiene backend propio, así que el push necesita tres piezas fuera del
+navegador: la cola en Postgres, `pg_cron` para el reloj y una Edge Function que
+es la única que puede firmar con la clave VAPID.
+
+**Nada se manda desde un trigger.** El trigger sólo encola en `notifications`;
+si el push falla o se cae Internet, el guardado del usuario no se rompe. Un
+`dedupe_key` con la fecha adentro evita que un vencimiento avise cada minuto.
+
+### Puesta en marcha, en este orden
+
+```bash
+# 1. Generar el par de claves
+npx web-push generate-vapid-keys
+```
+
+2. La **pública** va a `.env.local` como `NEXT_PUBLIC_VAPID_PUBLIC_KEY` y a las
+   variables de entorno de Vercel. La **privada** nunca al repo.
+
+3. Un token para que sólo la base pueda invocar la función:
+   `openssl rand -hex 32`
+
+```bash
+# 4. Secretos y deploy de la función
+supabase secrets set VAPID_PUBLIC_KEY=...
+supabase secrets set VAPID_PRIVATE_KEY=...
+supabase secrets set VAPID_SUBJECT=mailto:tu@mail.com
+supabase secrets set PUSH_TOKEN=...
+supabase functions deploy enviar-push --no-verify-jwt
+```
+
+> Va con `--no-verify-jwt` porque quien la llama es `pg_cron` desde la base, que
+> no tiene JWT de usuario. La autorización propia es el `PUSH_TOKEN`.
+
+5. Correr `supabase/20_push.sql` y después los dos `insert` del paso 9 de ese
+   archivo, con la URL de la función y el token.
+
+6. Deploy de la app (push a `main`) y, en cada celular, tocar la campana.
+
+### El detalle de iOS
+
+En iPhone el push **sólo funciona con la app agregada a la pantalla de inicio**,
+desde Safari — Chrome en iOS no puede instalar. Es regla de Apple, no hay forma
+de saltearla. `pushSupport()` en [`lib/push.ts`](lib/push.ts) distingue «no se
+puede» de «falta instalarla» justamente para poder mostrar las instrucciones en
+vez de un botón que nunca va a andar. En Android alcanza con tocar la campana.
+
+La suscripción es **por dispositivo, no por usuario**: como toda la empresa
+entra con la misma cuenta, cada celular se da de alta una vez y el aviso va a
+todos los dados de alta. El `upsert` va por `endpoint`, así que reactivar en el
+mismo celular no duplica.

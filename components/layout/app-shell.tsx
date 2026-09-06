@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/sheet'
 import { SidebarNav } from './sidebar-nav'
 import { AlertsMenu } from './alerts-menu'
+import { PushToggle } from './push-toggle'
 import { UserMenu } from './user-menu'
 import { StoreGate } from './store-gate'
 import { BrandMark } from './brand-mark'
@@ -84,6 +85,7 @@ export function AppShell({
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <PushToggle />
             <AlertsMenu />
             <UserMenu email={userEmail} />
           </div>

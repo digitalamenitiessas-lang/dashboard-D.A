@@ -17,6 +17,14 @@ export const metadata: Metadata = {
   description:
     'Dashboard interno de gestión de proyectos, clientes, cobros e infraestructura de Digital Amenities.',
   generator: 'v0.app',
+  // Instalable en el celular. En iPhone no es un lujo: las notificaciones
+  // push sólo existen con la app agregada a la pantalla de inicio.
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    title: 'Digital A.',
+    statusBarStyle: 'black-translucent',
+  },
 }
 
 export const viewport: Viewport = {
