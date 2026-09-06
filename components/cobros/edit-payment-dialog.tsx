@@ -18,6 +18,7 @@ import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
+import { formatMoney } from '@/lib/format'
 import type { Currency, Payment, PaymentMethod } from '@/lib/types'
 
 const methods: PaymentMethod[] = [
@@ -48,6 +49,10 @@ export function EditPaymentDialog({
   const [notes, setNotes] = React.useState(payment.notes)
   const [accountId, setAccountId] = React.useState(payment.accountId ?? '')
   const [saving, setSaving] = React.useState(false)
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false)
+
+  /** La cuenta tal como está guardada: es a la que le cambia el saldo. */
+  const savedAccount = accounts.find((a) => a.id === payment.accountId)
 
   // An account holds one currency, so switching the currency can leave a
   // now-invalid account selected.
@@ -60,9 +65,9 @@ export function EditPaymentDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!valid) return
+    if (!valid || saving) return
     setSaving(true)
-    await updatePayment(payment.id, {
+    const ok = await updatePayment(payment.id, {
       concept: concept.trim(),
       amount: Number(amount),
       currency,
@@ -73,134 +78,185 @@ export function EditPaymentDialog({
       accountId: accountId || null,
     })
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Pago actualizado')
     onOpenChange(false)
   }
 
   async function handleDelete() {
+    if (saving) return
     setSaving(true)
-    await deletePayment(payment.id)
+    const ok = await deletePayment(payment.id)
     setSaving(false)
+    if (!ok) return
+    setConfirmingDelete(false)
     toast.success('Pago eliminado')
     onOpenChange(false)
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Editar pago</DialogTitle>
-          <DialogDescription>
-            Corregí el concepto, el importe o la fecha en que se cobró.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="epay-concept">Concepto</FieldLabel>
-              <Input
-                id="epay-concept"
-                value={concept}
-                onChange={(e) => setConcept(e.target.value)}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-4">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Editar pago</DialogTitle>
+            <DialogDescription>
+              Corregí el concepto, el importe o la fecha en que se cobró.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleSubmit}>
+            <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="epay-amount">Monto</FieldLabel>
-                <MoneyInput
-                  id="epay-amount"
-                  value={amount}
-                  onValueChange={setAmount}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="epay-currency">Moneda</FieldLabel>
-                <SimpleSelect
-                  id="epay-currency"
-                  value={currency}
-                  onValueChange={(v) => setCurrency(v as Currency)}
-                  options={toOptions(['USD', 'ARS', 'EUR'] as const)}
-                />
-              </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <Field>
-                <FieldLabel htmlFor="epay-paid">Fecha de pago</FieldLabel>
+                <FieldLabel htmlFor="epay-concept">Concepto</FieldLabel>
                 <Input
-                  id="epay-paid"
-                  type="date"
-                  value={paidDate}
-                  onChange={(e) => setPaidDate(e.target.value)}
+                  id="epay-concept"
+                  value={concept}
+                  onChange={(e) => setConcept(e.target.value)}
+                />
+              </Field>
+              <div className="grid grid-cols-2 gap-4">
+                <Field>
+                  <FieldLabel htmlFor="epay-amount">Monto</FieldLabel>
+                  <MoneyInput
+                    id="epay-amount"
+                    value={amount}
+                    onValueChange={setAmount}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="epay-currency">Moneda</FieldLabel>
+                  <SimpleSelect
+                    id="epay-currency"
+                    value={currency}
+                    onValueChange={(v) => setCurrency(v as Currency)}
+                    options={toOptions(['USD', 'ARS', 'EUR'] as const)}
+                  />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Field>
+                  <FieldLabel htmlFor="epay-paid">Fecha de pago</FieldLabel>
+                  <Input
+                    id="epay-paid"
+                    type="date"
+                    value={paidDate}
+                    onChange={(e) => setPaidDate(e.target.value)}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="epay-method">Medio de pago</FieldLabel>
+                  <SimpleSelect
+                    id="epay-method"
+                    value={method}
+                    onValueChange={setMethod}
+                    placeholder="Sin definir"
+                    options={[
+                      { value: '', label: 'Sin definir' },
+                      ...methods.map((m) => ({ value: m, label: m })),
+                    ]}
+                  />
+                </Field>
+              </div>
+              <Field>
+                <FieldLabel htmlFor="epay-account">¿A qué cuenta entró?</FieldLabel>
+                <AccountSelect
+                  id="epay-account"
+                  value={accountId}
+                  onValueChange={setAccountId}
+                  currency={currency}
+                  allowNone
+                  noneLabel="Sin asignar"
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="epay-method">Medio de pago</FieldLabel>
-                <SimpleSelect
-                  id="epay-method"
-                  value={method}
-                  onValueChange={setMethod}
-                  placeholder="Sin definir"
-                  options={[
-                    { value: '', label: 'Sin definir' },
-                    ...methods.map((m) => ({ value: m, label: m })),
-                  ]}
+                <FieldLabel htmlFor="epay-receipt">Comprobante</FieldLabel>
+                <Input
+                  id="epay-receipt"
+                  value={receipt}
+                  onChange={(e) => setReceipt(e.target.value)}
+                  placeholder="N° de factura o referencia"
                 />
               </Field>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="epay-account">¿A qué cuenta entró?</FieldLabel>
-              <AccountSelect
-                id="epay-account"
-                value={accountId}
-                onValueChange={setAccountId}
-                currency={currency}
-                allowNone
-                noneLabel="Sin asignar"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="epay-receipt">Comprobante</FieldLabel>
-              <Input
-                id="epay-receipt"
-                value={receipt}
-                onChange={(e) => setReceipt(e.target.value)}
-                placeholder="N° de factura o referencia"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="epay-notes">Observaciones</FieldLabel>
-              <Textarea
-                id="epay-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-              />
-            </Field>
-          </FieldGroup>
-          <DialogFooter className="mt-6 sm:justify-between">
+              <Field>
+                <FieldLabel htmlFor="epay-notes">Observaciones</FieldLabel>
+                <Textarea
+                  id="epay-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                />
+              </Field>
+            </FieldGroup>
+            <DialogFooter className="mt-6 sm:justify-between">
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={saving}
+                onClick={() => setConfirmingDelete(true)}
+              >
+                Eliminar
+              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving || !valid}>
+                  {saving ? 'Guardando...' : 'Guardar'}
+                </Button>
+              </div>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Borrar un cobro le baja el saldo a la cuenta donde entró, y el saldo
+          no está guardado: se recalcula solo. Se pregunta mostrando el importe
+          y a qué cuenta le pega. */}
+      <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Eliminar el cobro?</DialogTitle>
+            <DialogDescription>
+              Se recalcula el saldo de la cuenta donde había entrado. No se puede
+              deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+            <p className="text-sm font-medium">{payment.concept}</p>
+            <p className="mt-1 flex items-center justify-between gap-3 text-sm">
+              <span className="min-w-0 truncate text-muted-foreground">
+                {savedAccount
+                  ? `Se le descuenta a ${savedAccount.name}`
+                  : 'Sin cuenta asignada: no mueve ningún saldo'}
+              </span>
+              <span className="shrink-0 font-semibold tabular-nums text-red-300">
+                −{formatMoney(payment.amount, payment.currency)}
+              </span>
+            </p>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmingDelete(false)}
+            >
+              No, dejarlo
+            </Button>
             <Button
               type="button"
               variant="destructive"
               disabled={saving}
               onClick={() => void handleDelete()}
             >
-              Eliminar
+              {saving ? 'Eliminando...' : 'Sí, eliminar'}
             </Button>
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saving || !valid}>
-                {saving ? 'Guardando...' : 'Guardar'}
-              </Button>
-            </div>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

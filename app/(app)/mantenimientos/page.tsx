@@ -36,9 +36,14 @@ import {
   CollectMaintenanceDialog,
 } from '@/components/mantenimientos/maintenance-dialogs'
 import { useStore } from '@/lib/store'
-import { monthlyMaintenanceValue, nextMaintenanceCharge } from '@/lib/derive'
+import { maintenancePeriods, monthlyMaintenanceValue } from '@/lib/derive'
 import { formatDate, formatMoney, relativeDays, daysUntil } from '@/lib/format'
-import { formatMoneyByCurrency, sumByCurrency } from '@/lib/money'
+import {
+  formatMoneyByCurrency,
+  isEmptyMoney,
+  mergeMoney,
+  sumByCurrency,
+} from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { Project } from '@/lib/types'
 
@@ -48,9 +53,11 @@ export default function MantenimientosPage() {
   const [collectTarget, setCollectTarget] = React.useState<Project | null>(null)
   const [newPlanOpen, setNewPlanOpen] = React.useState(false)
 
+  // `next` ya viene con la mora adentro: si hay períodos sin cobrar, el que
+  // toca cobrar es el impago más viejo, no el del mes que viene.
   const active = projects
     .filter((p) => p.maintenance.active && p.maintenance.status === 'Activo')
-    .map((p) => ({ project: p, next: nextMaintenanceCharge(p) }))
+    .map((p) => ({ project: p, ...maintenancePeriods(p, maintenanceCharges) }))
     .sort((a, b) => (a.next ?? '9999').localeCompare(b.next ?? '9999'))
 
   // Implemented projects that could start billing but haven't been activated.
@@ -85,11 +92,15 @@ export default function MantenimientosPage() {
     return grouped
   }, [maintenanceCharges])
   const dueSoon = active.filter(
-    ({ next }) => next && (daysUntil(next) ?? 99) <= 7 && (daysUntil(next) ?? 0) >= 0,
+    ({ next, overdue }) =>
+      overdue.length === 0 &&
+      next &&
+      (daysUntil(next) ?? 99) <= 7 &&
+      (daysUntil(next) ?? 0) >= 0,
   ).length
-  const overdue = active.filter(
-    ({ next }) => next && (daysUntil(next) ?? 0) < 0,
-  ).length
+  // Planes con al menos un período caído sin cobro que lo tape.
+  const overdueCount = active.filter(({ overdue }) => overdue.length > 0).length
+  const overdueTotal = mergeMoney(...active.map((a) => a.overdueTotal))
 
   return (
     <div className="flex flex-col gap-6">
@@ -125,9 +136,14 @@ export default function MantenimientosPage() {
         />
         <StatCard
           label="Vencidos"
-          value={overdue}
+          value={overdueCount}
+          hint={
+            isEmptyMoney(overdueTotal)
+              ? 'Sin cobros atrasados'
+              : `${formatMoneyByCurrency(overdueTotal)} sin cobrar`
+          }
           icon={TriangleAlert}
-          accent={overdue ? 'red' : 'neutral'}
+          accent={overdueCount ? 'red' : 'neutral'}
         />
       </div>
 
@@ -147,10 +163,10 @@ export default function MantenimientosPage() {
           </Empty>
         ) : (
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            {active.map(({ project, next }) => {
+            {active.map(({ project, next, overdue, overdueTotal }) => {
               const d = next ? daysUntil(next) : null
-              const late = d !== null && d < 0
-              const soon = d !== null && d >= 0 && d <= 7
+              const late = overdue.length > 0
+              const soon = !late && d !== null && d >= 0 && d <= 7
               const m = project.maintenance
               return (
                 <section key={project.id} className="glass rounded-2xl p-5">
@@ -182,9 +198,9 @@ export default function MantenimientosPage() {
                   >
                     <div className="min-w-0">
                       <p className="text-[11px] text-muted-foreground">
-                        Próximo cobro
+                        {late ? 'Cobro más viejo sin registrar' : 'Próximo cobro'}
                       </p>
-                      <p className="mt-0.5 text-sm font-semibold">
+                      <p className="mt-0.5 text-sm font-semibold tabular-nums">
                         {formatDate(next)}
                       </p>
                     </div>
@@ -201,6 +217,18 @@ export default function MantenimientosPage() {
                       {next ? relativeDays(next) : '—'}
                     </span>
                   </div>
+
+                  {late ? (
+                    <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3">
+                      <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-red-300">
+                        <TriangleAlert className="size-3.5 shrink-0" />
+                        {overdue.length} período(s) sin cobrar
+                      </span>
+                      <span className="shrink-0 text-sm font-semibold tabular-nums text-red-300">
+                        {formatMoneyByCurrency(overdueTotal)}
+                      </span>
+                    </div>
+                  ) : null}
 
                   <div className="mt-3">
                     <p className="mb-1 text-xs font-medium text-muted-foreground">

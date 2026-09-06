@@ -37,7 +37,6 @@ import {
   formatMoneyByCurrency,
   isEmptyMoney,
   mergeMoney,
-  pendingMoney,
 } from '@/lib/money'
 import type { Client } from '@/lib/types'
 
@@ -67,8 +66,10 @@ export default function ClientesPage() {
         paid,
         maintenance,
         collected: mergeMoney(paid, maintenance),
-        // Measured against the quote, so recurring fees stay out of it.
-        pending: pendingMoney(quoted, paid),
+        // Measured against the quote, so recurring fees stay out of it. El
+        // piso en cero viene puesto de cada proyecto: si un proyecto del
+        // cliente está cobrado de más, eso no borra la deuda de otro.
+        pending: mergeMoney(...finances.map((f) => f.pendingByCurrency)),
         pct: collectionRatio(quoted, paid),
         activeMaintenances,
       }

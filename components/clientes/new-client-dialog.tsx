@@ -27,6 +27,7 @@ export function NewClientDialog() {
   const [phone, setPhone] = React.useState('')
   const [email, setEmail] = React.useState('')
   const [notes, setNotes] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
 
   function reset() {
     setName('')
@@ -42,13 +43,17 @@ export function NewClientDialog() {
       toast.error('El nombre o razón social es obligatorio')
       return
     }
-    await addClient({
+    if (saving) return
+    setSaving(true)
+    const ok = await addClient({
       name: name.trim(),
       contactPerson: contactPerson.trim(),
       phone: phone.trim(),
       email: email.trim(),
       notes: notes.trim(),
     })
+    setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Cliente creado', { description: name })
     reset()
     setOpen(false)
@@ -123,7 +128,9 @@ export function NewClientDialog() {
             <DialogClose render={<Button type="button" variant="ghost" />}>
               Cancelar
             </DialogClose>
-            <Button type="submit">Crear cliente</Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? 'Creando...' : 'Crear cliente'}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>

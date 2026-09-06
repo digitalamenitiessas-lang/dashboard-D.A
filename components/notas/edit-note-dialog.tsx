@@ -45,8 +45,9 @@ export function EditNoteDialog({
       toast.error('El título es obligatorio')
       return
     }
+    if (saving) return
     setSaving(true)
-    await updateNote(note.id, {
+    const ok = await updateNote(note.id, {
       title: title.trim(),
       content: content.trim(),
       author: author.trim() || 'Equipo interno',
@@ -60,6 +61,7 @@ export function EditNoteDialog({
       projectId: projectId || null,
     })
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Nota actualizada')
     onOpenChange(false)
   }

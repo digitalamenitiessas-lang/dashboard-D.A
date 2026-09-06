@@ -37,12 +37,12 @@ import { StatCard } from '@/components/shared/stat-card'
 import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
+import { projectFinance } from '@/lib/derive'
 import { formatDate, formatMoney } from '@/lib/format'
 import {
   collectionRatio,
   formatMoneyByCurrency,
   mergeMoney,
-  pendingMoney,
   sumByCurrency,
 } from '@/lib/money'
 import type { Currency, Payment, PaymentMethod } from '@/lib/types'
@@ -87,7 +87,12 @@ export default function CobrosPage() {
   const totalPaid = sumByCurrency(payments)
   const totalMaintenance = sumByCurrency(maintenanceCharges)
   const totalCollected = mergeMoney(totalPaid, totalMaintenance)
-  const pending = pendingMoney(totalQuoted, totalPaid)
+  // El pendiente se calcula proyecto por proyecto y recién después se suma:
+  // con el piso en cero sobre el agregado, un proyecto cobrado de más tapaba
+  // la deuda de otro de la misma moneda.
+  const pending = mergeMoney(
+    ...projects.map((p) => projectFinance(p, payments).pendingByCurrency),
+  )
   const collectedPct = collectionRatio(totalQuoted, totalPaid)
 
   const rows = React.useMemo<CobroRow[]>(() => {

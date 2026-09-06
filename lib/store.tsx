@@ -24,6 +24,7 @@ import {
   paymentToRow,
   projectToRow,
 } from './mappers'
+import { formatMoney, todayIso } from './format'
 import type {
   Account,
   ActivityEntry,
@@ -41,8 +42,6 @@ import type {
   Task,
   TaskKind,
 } from './types'
-
-const todayIso = () => new Date().toISOString().slice(0, 10)
 
 export interface NewProjectInput {
   name: string
@@ -76,68 +75,80 @@ interface StoreValue {
   cajaReady: boolean
   refresh: () => Promise<void>
 
+  // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
+  // `false` si falló (el store ya avisó con un toast rojo). Quien llama tiene
+  // que mirarlo antes de festejar: sin esto un diálogo cierra en verde
+  // habiendo perdido la carga.
+
   // projects
   addProject: (input: NewProjectInput) => Promise<string | null>
-  updateProject: (id: string, patch: Partial<Project>) => Promise<void>
-  updateProjectStatus: (id: string, status: ProjectStatus) => Promise<void>
-  deleteProject: (id: string) => Promise<void>
+  updateProject: (id: string, patch: Partial<Project>) => Promise<boolean>
+  updateProjectStatus: (id: string, status: ProjectStatus) => Promise<boolean>
+  deleteProject: (id: string) => Promise<boolean>
   updateDevelopment: (
     projectId: string,
     patch: Partial<Development>,
-  ) => Promise<void>
+  ) => Promise<boolean>
   updateInfrastructure: (
     projectId: string,
     patch: Partial<Infrastructure>,
-  ) => Promise<void>
+  ) => Promise<boolean>
 
   // tasks
-  addTask: (projectId: string, kind: TaskKind, title: string) => Promise<void>
-  toggleTask: (id: string, done: boolean) => Promise<void>
-  deleteTask: (id: string) => Promise<void>
+  addTask: (
+    projectId: string,
+    kind: TaskKind,
+    title: string,
+  ) => Promise<boolean>
+  toggleTask: (id: string, done: boolean) => Promise<boolean>
+  deleteTask: (id: string) => Promise<boolean>
 
   // infrastructure costs
-  addInfraCost: (projectId: string, cost: Omit<InfraCost, 'id'>) => Promise<void>
-  deleteInfraCost: (projectId: string, costId: string) => Promise<void>
+  addInfraCost: (
+    projectId: string,
+    cost: Omit<InfraCost, 'id'>,
+  ) => Promise<boolean>
+  deleteInfraCost: (projectId: string, costId: string) => Promise<boolean>
 
   // payments
-  addPayment: (payment: Omit<Payment, 'id'>) => Promise<void>
-  updatePayment: (id: string, patch: Partial<Payment>) => Promise<void>
-  deletePayment: (id: string) => Promise<void>
+  addPayment: (payment: Omit<Payment, 'id'>) => Promise<boolean>
+  updatePayment: (id: string, patch: Partial<Payment>) => Promise<boolean>
+  deletePayment: (id: string) => Promise<boolean>
 
   // clients
-  addClient: (client: Omit<Client, 'id'>) => Promise<void>
-  updateClient: (id: string, patch: Partial<Client>) => Promise<void>
-  deleteClient: (id: string) => Promise<void>
+  addClient: (client: Omit<Client, 'id'>) => Promise<boolean>
+  updateClient: (id: string, patch: Partial<Client>) => Promise<boolean>
+  deleteClient: (id: string) => Promise<boolean>
 
   // notes
   addNote: (
     note: Omit<Note, 'id' | 'createdAt' | 'convertedToProjectId'>,
-  ) => Promise<void>
-  updateNote: (id: string, patch: Partial<Note>) => Promise<void>
-  deleteNote: (id: string) => Promise<void>
+  ) => Promise<boolean>
+  updateNote: (id: string, patch: Partial<Note>) => Promise<boolean>
+  deleteNote: (id: string) => Promise<boolean>
   convertNoteToProject: (noteId: string) => Promise<string | null>
 
   // caja
-  addAccount: (account: Omit<Account, 'id'>) => Promise<void>
-  updateAccount: (id: string, patch: Partial<Account>) => Promise<void>
-  deleteAccount: (id: string) => Promise<void>
-  addMovement: (movement: Omit<MoneyMovement, 'id'>) => Promise<void>
+  addAccount: (account: Omit<Account, 'id'>) => Promise<boolean>
+  updateAccount: (id: string, patch: Partial<Account>) => Promise<boolean>
+  deleteAccount: (id: string) => Promise<boolean>
+  addMovement: (movement: Omit<MoneyMovement, 'id'>) => Promise<boolean>
   updateMovement: (
     id: string,
     patch: Partial<MoneyMovement>,
-  ) => Promise<void>
-  deleteMovement: (id: string) => Promise<void>
+  ) => Promise<boolean>
+  deleteMovement: (id: string) => Promise<boolean>
 
   // maintenance
   activateMaintenance: (
     id: string,
     maintenance: Partial<Maintenance>,
     options?: { markProjectInMaintenance?: boolean },
-  ) => Promise<void>
+  ) => Promise<boolean>
   updateMaintenance: (
     id: string,
     maintenance: Partial<Maintenance>,
-  ) => Promise<void>
+  ) => Promise<boolean>
   collectMaintenance: (
     id: string,
     data: {
@@ -147,7 +158,7 @@ interface StoreValue {
       receipt?: string | null
       accountId?: string | null
     },
-  ) => Promise<void>
+  ) => Promise<boolean>
 }
 
 const StoreContext = React.createContext<StoreValue | null>(null)
@@ -330,12 +341,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (id: string, patch: Partial<Project>) => {
       try {
         const row = projectToRow(patch)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { error } = await supabase.from('projects').update(row).eq('id', id)
         if (error) throw error
         await reloadProject(id)
+        return true
       } catch (e) {
         fail('guardar el proyecto', e)
+        return false
       }
     },
     [supabase, reloadProject, fail],
@@ -356,8 +369,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           type: 'estado',
           message: `${project?.name ?? 'Proyecto'} pasó a "${status}"`,
         })
+        return true
       } catch (e) {
         fail('cambiar el estado', e)
+        return false
       }
     },
     [supabase, reloadProject, projects, logActivity, fail],
@@ -372,8 +387,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setPayments((prev) => prev.filter((p) => p.projectId !== id))
         setTasks((prev) => prev.filter((t) => t.projectId !== id))
         setMaintenanceCharges((prev) => prev.filter((c) => c.projectId !== id))
+        return true
       } catch (e) {
         fail('eliminar el proyecto', e)
+        return false
       }
     },
     [supabase, fail],
@@ -393,8 +410,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .update({ updated_at: new Date().toISOString() })
           .eq('id', projectId)
         await reloadProject(projectId)
+        return true
       } catch (e) {
         fail('guardar el desarrollo', e)
+        return false
       }
     },
     [supabase, reloadProject, fail],
@@ -404,15 +423,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (projectId: string, patch: Partial<Infrastructure>) => {
       try {
         const row = infrastructureToRow(patch)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { error } = await supabase
           .from('project_infrastructure')
           .update(row)
           .eq('project_id', projectId)
         if (error) throw error
         await reloadProject(projectId)
+        return true
       } catch (e) {
         fail('guardar la infraestructura', e)
+        return false
       }
     },
     [supabase, reloadProject, fail],
@@ -431,8 +452,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .single()
         if (error) throw error
         setTasks((prev) => [...prev, mapTask(data)])
+        return true
       } catch (e) {
         fail('agregar el pendiente', e)
+        return false
       }
     },
     [supabase, fail],
@@ -449,8 +472,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .single()
         if (error) throw error
         setTasks((prev) => prev.map((t) => (t.id === id ? mapTask(data) : t)))
+        return true
       } catch (e) {
         fail('actualizar el pendiente', e)
+        return false
       }
     },
     [supabase, fail],
@@ -465,8 +490,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .eq('id', id)
         if (error) throw error
         setTasks((prev) => prev.filter((t) => t.id !== id))
+        return true
       } catch (e) {
         fail('eliminar el pendiente', e)
+        return false
       }
     },
     [supabase, fail],
@@ -487,8 +514,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         })
         if (error) throw error
         await reloadProject(projectId)
+        return true
       } catch (e) {
         fail('agregar el costo', e)
+        return false
       }
     },
     [supabase, reloadProject, fail],
@@ -503,8 +532,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .eq('id', costId)
         if (error) throw error
         await reloadProject(projectId)
+        return true
       } catch (e) {
         fail('eliminar el costo', e)
+        return false
       }
     },
     [supabase, reloadProject, fail],
@@ -522,15 +553,23 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .select()
           .single()
         if (error) throw error
-        setPayments((prev) => [...prev, mapPayment(data)])
+        // La lista viene ordenada por fecha de cobro descendente: un pago
+        // nuevo va donde le toca por fecha, no al final.
+        setPayments((prev) =>
+          [mapPayment(data), ...prev].sort((a, b) =>
+            b.paidDate.localeCompare(a.paidDate),
+          ),
+        )
         const project = projects.find((p) => p.id === payment.projectId)
         await logActivity({
           projectId: payment.projectId,
           type: 'pago',
           message: `Pago registrado: ${payment.concept} en ${project?.name ?? ''}`,
         })
+        return true
       } catch (e) {
         fail('registrar el pago', e)
+        return false
       }
     },
     [supabase, projects, logActivity, fail],
@@ -540,7 +579,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (id: string, patch: Partial<Payment>) => {
       try {
         const row = paymentToRow(patch)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { data, error } = await supabase
           .from('payments')
           .update(row)
@@ -548,9 +587,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .select()
           .single()
         if (error) throw error
-        setPayments((prev) => prev.map((p) => (p.id === id ? mapPayment(data) : p)))
+        setPayments((prev) =>
+          prev
+            .map((p) => (p.id === id ? mapPayment(data) : p))
+            .sort((a, b) => b.paidDate.localeCompare(a.paidDate)),
+        )
+        return true
       } catch (e) {
         fail('guardar el pago', e)
+        return false
       }
     },
     [supabase, fail],
@@ -562,8 +607,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.from('payments').delete().eq('id', id)
         if (error) throw error
         setPayments((prev) => prev.filter((p) => p.id !== id))
+        return true
       } catch (e) {
         fail('eliminar el pago', e)
+        return false
       }
     },
     [supabase, fail],
@@ -584,8 +631,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setClients((prev) =>
           [...prev, mapClient(data)].sort((a, b) => a.name.localeCompare(b.name)),
         )
+        return true
       } catch (e) {
         fail('crear el cliente', e)
+        return false
       }
     },
     [supabase, fail],
@@ -595,7 +644,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (id: string, patch: Partial<Client>) => {
       try {
         const row = clientToRow(patch)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { data, error } = await supabase
           .from('clients')
           .update(row)
@@ -608,8 +657,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             .map((c) => (c.id === id ? mapClient(data) : c))
             .sort((a, b) => a.name.localeCompare(b.name)),
         )
+        return true
       } catch (e) {
         fail('guardar el cliente', e)
+        return false
       }
     },
     [supabase, fail],
@@ -623,8 +674,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setClients((prev) => prev.filter((c) => c.id !== id))
         // Projects keep existing with client_id set to null by the FK rule.
         await refresh()
+        return true
       } catch (e) {
         fail('eliminar el cliente', e)
+        return false
       }
     },
     [supabase, refresh, fail],
@@ -648,8 +701,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           type: 'nota',
           message: `Nueva nota: ${note.title}`,
         })
+        return true
       } catch (e) {
         fail('crear la nota', e)
+        return false
       }
     },
     [supabase, logActivity, fail],
@@ -659,7 +714,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (id: string, patch: Partial<Note>) => {
       try {
         const row = noteToRow(patch)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { data, error } = await supabase
           .from('notes')
           .update(row)
@@ -668,8 +723,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .single()
         if (error) throw error
         setNotes((prev) => prev.map((n) => (n.id === id ? mapNote(data) : n)))
+        return true
       } catch (e) {
         fail('guardar la nota', e)
+        return false
       }
     },
     [supabase, fail],
@@ -681,8 +738,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         const { error } = await supabase.from('notes').delete().eq('id', id)
         if (error) throw error
         setNotes((prev) => prev.filter((n) => n.id !== id))
+        return true
       } catch (e) {
         fail('eliminar la nota', e)
+        return false
       }
     },
     [supabase, fail],
@@ -755,8 +814,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .single()
         if (error) throw error
         setAccounts((prev) => sortAccounts([...prev, mapAccount(data)]))
+        return true
       } catch (e) {
         fail('crear la cuenta', e)
+        return false
       }
     },
     [supabase, fail],
@@ -766,7 +827,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (id: string, patch: Partial<Account>) => {
       try {
         const row = accountToRow(patch)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { data, error } = await supabase
           .from('accounts')
           .update(row)
@@ -777,8 +838,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setAccounts((prev) =>
           sortAccounts(prev.map((a) => (a.id === id ? mapAccount(data) : a))),
         )
+        return true
       } catch (e) {
         fail('guardar la cuenta', e)
+        return false
       }
     },
     [supabase, fail],
@@ -792,10 +855,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setAccounts((prev) => prev.filter((a) => a.id !== id))
         // Cobros pointing at it were cleared by the FK rule.
         await refresh()
+        return true
       } catch (e) {
         // The FK on movements is RESTRICT: an account with history can't
         // be deleted, only archived.
         fail('eliminar la cuenta', e)
+        return false
       }
     },
     [supabase, refresh, fail],
@@ -815,8 +880,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             b.movedOn.localeCompare(a.movedOn),
           ),
         )
+        return true
       } catch (e) {
         fail('registrar el movimiento', e)
+        return false
       }
     },
     [supabase, fail],
@@ -826,7 +893,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (id: string, patch: Partial<MoneyMovement>) => {
       try {
         const row = movementToRow(patch)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { data, error } = await supabase
           .from('money_movements')
           .update(row)
@@ -839,8 +906,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
             .map((m) => (m.id === id ? mapMovement(data) : m))
             .sort((a, b) => b.movedOn.localeCompare(a.movedOn)),
         )
+        return true
       } catch (e) {
         fail('guardar el movimiento', e)
+        return false
       }
     },
     [supabase, fail],
@@ -855,8 +924,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .eq('id', id)
         if (error) throw error
         setMovements((prev) => prev.filter((m) => m.id !== id))
+        return true
       } catch (e) {
         fail('eliminar el movimiento', e)
+        return false
       }
     },
     [supabase, fail],
@@ -869,15 +940,17 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     async (id: string, maintenance: Partial<Maintenance>) => {
       try {
         const row = maintenanceToRow(maintenance)
-        if (Object.keys(row).length === 0) return
+        if (Object.keys(row).length === 0) return true
         const { error } = await supabase
           .from('project_maintenance')
           .update(row)
           .eq('project_id', id)
         if (error) throw error
         await reloadProject(id)
+        return true
       } catch (e) {
         fail('guardar el mantenimiento', e)
+        return false
       }
     },
     [supabase, reloadProject, fail],
@@ -917,8 +990,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           type: 'mantenimiento',
           message: `Mantenimiento activado en ${project?.name ?? ''}`,
         })
+        return true
       } catch (e) {
         fail('activar el mantenimiento', e)
+        return false
       }
     },
     [supabase, reloadProject, projects, logActivity, fail],
@@ -964,63 +1039,120 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         if (mErr) throw mErr
 
         await reloadProject(id)
+        // El monto va formateado y con su moneda: acá el «$» solo no dice
+        // nada, que es justamente el punto de toda la app.
+        const collected = formatMoney(
+          data.amount,
+          project?.maintenance.currency ?? 'USD',
+        )
         await logActivity({
           projectId: id,
           type: 'mantenimiento',
-          message: `Mantenimiento cobrado en ${project?.name ?? ''} ($${data.amount})`,
+          message: `Mantenimiento cobrado en ${project?.name ?? ''} (${collected})`,
         })
+        return true
       } catch (e) {
         fail('registrar el cobro de mantenimiento', e)
+        return false
       }
     },
     [supabase, reloadProject, projects, logActivity, fail],
   )
 
-  const value: StoreValue = {
-    loading,
-    error,
-    projects,
-    clients,
-    payments,
-    notes,
-    activity,
-    tasks,
-    maintenanceCharges,
-    accounts,
-    movements,
-    cajaReady,
-    refresh,
-    addProject,
-    updateProject,
-    updateProjectStatus,
-    deleteProject,
-    updateDevelopment,
-    updateInfrastructure,
-    addTask,
-    toggleTask,
-    deleteTask,
-    addInfraCost,
-    deleteInfraCost,
-    addPayment,
-    updatePayment,
-    deletePayment,
-    addClient,
-    updateClient,
-    deleteClient,
-    addNote,
-    updateNote,
-    deleteNote,
-    convertNoteToProject,
-    addAccount,
-    updateAccount,
-    deleteAccount,
-    addMovement,
-    updateMovement,
-    deleteMovement,
-    activateMaintenance,
-    updateMaintenance,
-    collectMaintenance,
-  }
+  // Sin memoizar, cada render del provider arma un objeto nuevo y despierta
+  // a todas las pantallas que leen el store aunque no haya cambiado un dato.
+  const value = React.useMemo<StoreValue>(
+    () => ({
+      loading,
+      error,
+      projects,
+      clients,
+      payments,
+      notes,
+      activity,
+      tasks,
+      maintenanceCharges,
+      accounts,
+      movements,
+      cajaReady,
+      refresh,
+      addProject,
+      updateProject,
+      updateProjectStatus,
+      deleteProject,
+      updateDevelopment,
+      updateInfrastructure,
+      addTask,
+      toggleTask,
+      deleteTask,
+      addInfraCost,
+      deleteInfraCost,
+      addPayment,
+      updatePayment,
+      deletePayment,
+      addClient,
+      updateClient,
+      deleteClient,
+      addNote,
+      updateNote,
+      deleteNote,
+      convertNoteToProject,
+      addAccount,
+      updateAccount,
+      deleteAccount,
+      addMovement,
+      updateMovement,
+      deleteMovement,
+      activateMaintenance,
+      updateMaintenance,
+      collectMaintenance,
+    }),
+    [
+      loading,
+      error,
+      projects,
+      clients,
+      payments,
+      notes,
+      activity,
+      tasks,
+      maintenanceCharges,
+      accounts,
+      movements,
+      cajaReady,
+      refresh,
+      addProject,
+      updateProject,
+      updateProjectStatus,
+      deleteProject,
+      updateDevelopment,
+      updateInfrastructure,
+      addTask,
+      toggleTask,
+      deleteTask,
+      addInfraCost,
+      deleteInfraCost,
+      addPayment,
+      updatePayment,
+      deletePayment,
+      addClient,
+      updateClient,
+      deleteClient,
+      addNote,
+      updateNote,
+      deleteNote,
+      convertNoteToProject,
+      addAccount,
+      updateAccount,
+      deleteAccount,
+      addMovement,
+      updateMovement,
+      deleteMovement,
+      activateMaintenance,
+      updateMaintenance,
+      collectMaintenance,
+    ],
+  )
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
 }

@@ -40,8 +40,9 @@ export function EditClientDialog({
       toast.error('El nombre o razón social es obligatorio')
       return
     }
+    if (saving) return
     setSaving(true)
-    await updateClient(client.id, {
+    const ok = await updateClient(client.id, {
       name: name.trim(),
       contactPerson: contactPerson.trim(),
       phone: phone.trim(),
@@ -49,6 +50,7 @@ export function EditClientDialog({
       notes: notes.trim(),
     })
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Cliente actualizado')
     onOpenChange(false)
   }

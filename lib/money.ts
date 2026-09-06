@@ -45,7 +45,15 @@ export function mergeMoney(...totals: MoneyByCurrency[]): MoneyByCurrency {
   return merged
 }
 
-/** Per-currency `quoted - collected`, floored at zero. */
+/**
+ * Per-currency `quoted - collected`, floored at zero.
+ *
+ * Sirve para UN presupuesto contra SUS cobros. No la uses sobre totales ya
+ * agregados de varios proyectos: el piso en cero recién sobre la suma hace
+ * que un proyecto cobrado de más tape la deuda de otro de la misma moneda.
+ * Para eso está `ProjectFinance.pendingByCurrency`, que pone el piso proyecto
+ * por proyecto, y después se suman con `mergeMoney`.
+ */
 export function pendingMoney(
   quoted: MoneyByCurrency,
   collected: MoneyByCurrency,
@@ -80,13 +88,26 @@ export function formatMoneyByCurrency(totals: MoneyByCurrency): string {
     .join(' · ')
 }
 
-/** The one currency in play across these totals, or null when they mix. */
+/**
+ * The one currency in play across these totals, or null when they mix.
+ *
+ * Un bucket en cero no es una moneda en juego: un proyecto cargado en euros
+ * con monto 0 no tiene por qué hacer desaparecer el porcentaje de cobranza
+ * de toda la empresa. Si no hay nada distinto de cero se mira igual qué
+ * monedas están presentes, para no perder el caso legítimo de "todo en cero
+ * en una sola moneda".
+ */
 export function singleCurrency(...totals: MoneyByCurrency[]): Currency | null {
   const found = new Set<Currency>()
+  const withValue = new Set<Currency>()
   for (const total of totals) {
-    for (const [currency] of entries(total)) found.add(currency)
+    for (const [currency, amount] of entries(total)) {
+      found.add(currency)
+      if (Math.round(amount) !== 0) withValue.add(currency)
+    }
   }
-  return found.size === 1 ? [...found][0] : null
+  const inPlay = withValue.size > 0 ? withValue : found
+  return inPlay.size === 1 ? [...inPlay][0] : null
 }
 
 /**

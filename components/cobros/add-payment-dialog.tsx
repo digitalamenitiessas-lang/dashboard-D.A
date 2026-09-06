@@ -22,6 +22,7 @@ import { SimpleSelect } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
+import { todayIso } from '@/lib/format'
 import type { Currency, PaymentMethod } from '@/lib/types'
 
 const currencies: Currency[] = ['USD', 'ARS', 'EUR']
@@ -33,8 +34,6 @@ const methods: PaymentMethod[] = [
   'Crypto',
   'PayPal',
 ]
-
-const todayIso = () => new Date().toISOString().slice(0, 10)
 
 export function AddPaymentDialog({
   open,
@@ -54,6 +53,7 @@ export function AddPaymentDialog({
   const [method, setMethod] = React.useState<PaymentMethod>('Transferencia')
   const [receipt, setReceipt] = React.useState('')
   const [accountId, setAccountId] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
     if (open && defaultProjectId) setProjectId(defaultProjectId)
@@ -68,9 +68,12 @@ export function AddPaymentDialog({
 
   const valid = projectId && concept.trim() && Number(amount) > 0 && paidDate
 
+  // Sin este candado el botón sigue clickeable durante el await y un doble
+  // click carga el mismo cobro dos veces: plata duplicada en la caja.
   async function submit() {
-    if (!valid) return
-    await addPayment({
+    if (!valid || saving) return
+    setSaving(true)
+    const ok = await addPayment({
       projectId,
       concept: concept.trim(),
       amount: Number(amount),
@@ -81,6 +84,8 @@ export function AddPaymentDialog({
       notes: '',
       accountId: accountId || null,
     })
+    setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     setConcept('')
     setAmount('')
     setPaidDate(todayIso())
@@ -190,8 +195,8 @@ export function AddPaymentDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={() => void submit()} disabled={!valid}>
-            Registrar
+          <Button onClick={() => void submit()} disabled={saving || !valid}>
+            {saving ? 'Registrando...' : 'Registrar'}
           </Button>
         </DialogFooter>
       </DialogContent>

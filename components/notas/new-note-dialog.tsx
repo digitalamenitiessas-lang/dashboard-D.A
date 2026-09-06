@@ -64,8 +64,9 @@ export function NewNoteDialog({
       toast.error('El título es obligatorio')
       return
     }
+    if (saving) return
     setSaving(true)
-    await addNote({
+    const ok = await addNote({
       projectId: projectId || null,
       title: title.trim(),
       content: content.trim(),
@@ -79,6 +80,7 @@ export function NewNoteDialog({
       reminderDate: reminderDate || null,
     })
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Nota creada', { description: title })
     reset()
     setOpen(false)

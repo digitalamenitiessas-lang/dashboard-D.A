@@ -1,7 +1,13 @@
 import { daysUntil } from './format'
-import { mergeMoney, sumByCurrency, type MoneyByCurrency } from './money'
+import {
+  formatMoneyByCurrency,
+  mergeMoney,
+  sumByCurrency,
+  type MoneyByCurrency,
+} from './money'
 import type {
   Currency,
+  Maintenance,
   MaintenanceCharge,
   MaintenanceFrequency,
   Note,
@@ -24,6 +30,15 @@ export interface ProjectFinance {
   maintenanceByCurrency: MoneyByCurrency
   /** Total money in: payments plus maintenance. */
   collectedByCurrency: MoneyByCurrency
+  /**
+   * Lo que falta cobrar de ESTE proyecto, con el piso en cero puesto acá y no
+   * sobre el agregado. Para el pendiente de varios proyectos se suman estos
+   * buckets: si el piso se aplicara recién al final, un proyecto cobrado de
+   * más taparía la deuda de otro de la misma moneda.
+   */
+  pendingByCurrency: MoneyByCurrency
+  /** Lo cobrado por encima de lo cotizado. Se muestra aparte, no se compensa. */
+  overpaidByCurrency: MoneyByCurrency
 }
 
 export function projectFinance(
@@ -45,15 +60,19 @@ export function projectFinance(
     maintenanceCharges.filter((c) => c.projectId === project.id),
   )
 
+  const balance = project.quotedAmount - collected
+
   return {
     currency: project.currency,
     quoted: project.quotedAmount,
     collected,
-    pending: Math.max(project.quotedAmount - collected, 0),
+    pending: Math.max(balance, 0),
     quotedByCurrency: { [project.currency]: project.quotedAmount },
     paidByCurrency,
     maintenanceByCurrency,
     collectedByCurrency: mergeMoney(paidByCurrency, maintenanceByCurrency),
+    pendingByCurrency: { [project.currency]: Math.max(balance, 0) },
+    overpaidByCurrency: { [project.currency]: Math.max(-balance, 0) },
   }
 }
 
@@ -84,7 +103,84 @@ export function monthlyInfraCost(project: Project): MoneyByCurrency {
   )
 }
 
-/** Next maintenance charge date as ISO (yyyy-mm-dd) or null when inactive. */
+/**
+ * Tope duro de vencimientos a enumerar: 600 períodos son 50 años de plan
+ * mensual. Está para que un `start_date` de 1990 cargado de más no ponga a
+ * la pantalla a contar cuotas hasta el fin de los tiempos.
+ */
+const MAX_PERIODS = 600
+
+/** Fecha local a ISO (yyyy-mm-dd), sin pasar por UTC y correrse un día. */
+function toIso(date: Date): string {
+  const y = date.getFullYear()
+  const mo = String(date.getMonth() + 1).padStart(2, '0')
+  const da = String(date.getDate()).padStart(2, '0')
+  return `${y}-${mo}-${da}`
+}
+
+/**
+ * Serie de vencimientos del plan a partir del ancla, del más viejo al más
+ * nuevo. El ancla es el arranque del servicio, no un cobro: el primer
+ * vencimiento cae un período después, porque se factura el período cumplido.
+ *
+ * `past` son los vencimientos que ya cayeron y `next` el primero que todavía
+ * no: la comparación va por día calendario contra la medianoche local (vía
+ * `daysUntil`), así un vencimiento de HOY sigue siendo el próximo a cobrar y
+ * no se saltea al período siguiente apenas pasan las 00:00.
+ */
+function dueDateSeries(
+  m: Maintenance,
+  anchor: string,
+  today: Date,
+): { past: string[]; next: string | null } {
+  const step = frequencyMonths[m.frequency]
+  const anchorDate = new Date(anchor + 'T00:00:00')
+  if (Number.isNaN(anchorDate.getTime())) return { past: [], next: null }
+  const anchorDay = new Date(
+    anchorDate.getFullYear(),
+    anchorDate.getMonth(),
+    anchorDate.getDate(),
+  )
+  // Los días 29, 30 y 31 no existen todos los meses: se recortan a 28 para
+  // que la serie no se vaya corriendo sola de mes en mes.
+  const cursor = new Date(
+    anchorDate.getFullYear(),
+    anchorDate.getMonth(),
+    Math.max(1, Math.min(m.dueDay, 28)),
+  )
+  // El vencimiento del mes del ancla ya está cubierto por el ancla misma.
+  let guard = 0
+  while (cursor <= anchorDay && guard < 12) {
+    cursor.setMonth(cursor.getMonth() + step)
+    guard++
+  }
+
+  const past: string[] = []
+  let next: string | null = null
+  for (let i = 0; i < MAX_PERIODS; i++) {
+    const iso = toIso(cursor)
+    if ((daysUntil(iso, today) ?? 0) >= 0) {
+      next = iso
+      break
+    }
+    past.push(iso)
+    cursor.setMonth(cursor.getMonth() + step)
+  }
+  // Si se agotó el tope, igual devolvemos algo como próximo vencimiento.
+  if (next === null) next = toIso(cursor)
+
+  return { past, next }
+}
+
+/**
+ * Vencimiento del ciclo en curso como ISO (yyyy-mm-dd), o null si el plan no
+ * está activo. Un vencimiento de hoy cuenta como el que viene, no como uno
+ * que ya pasó.
+ *
+ * Ojo: esta función no sabe nada de cobros, así que no puede decir si los
+ * períodos anteriores quedaron impagos. Para la mora usá
+ * `maintenancePeriods()`, que mira los `MaintenanceCharge` de verdad.
+ */
 export function nextMaintenanceCharge(
   project: Project,
   today = new Date(),
@@ -93,24 +189,72 @@ export function nextMaintenanceCharge(
   if (!m.active || m.status !== 'Activo') return null
   const anchor = m.lastCollectedDate ?? m.startDate ?? m.implementationDate
   if (!anchor) return null
-  const step = frequencyMonths[m.frequency]
-  const anchorDate = new Date(anchor + 'T00:00:00')
-  const candidate = new Date(
-    anchorDate.getFullYear(),
-    anchorDate.getMonth(),
-    Math.min(m.dueDay, 28),
+  return dueDateSeries(m, anchor, today).next
+}
+
+export interface MaintenancePeriods {
+  /** Qué hay que cobrar: el impago más viejo si hay mora, si no el que viene. */
+  next: string | null
+  /** Vencimientos ya caídos sin ningún cobro que los tape, del más viejo al más nuevo. */
+  overdue: string[]
+  /** Lo adeudado por esos períodos, en la moneda del plan. */
+  overdueTotal: MoneyByCurrency
+}
+
+/**
+ * Todos los vencimientos del plan desde el arranque hasta hoy, y cuáles
+ * quedaron sin cobrar.
+ *
+ * El ancla es cuándo arrancó el servicio, no el último cobro:
+ * `lastCollectedDate` es estado derivado (es MAX(charged_on)), así que
+ * usarlo de ancla haría que cada cobro nuevo borre los períodos impagos
+ * anteriores y la mora se cure sola sin que nadie pague nada. Queda como
+ * último recurso, cuando no hay ni inicio ni implementación ni cobros de
+ * dónde agarrarse.
+ *
+ * Criterio de cobertura: cada vencimiento abre un período que va desde su
+ * fecha (inclusive) hasta el vencimiento siguiente (exclusive), y un cobro
+ * tapa el período en el que cae. Un cobro anterior al primer vencimiento —
+ * un adelanto, o el cobro del día de la implementación — se imputa al primer
+ * período. Dos cobros dentro del mismo período tapan uno solo: el otro sigue
+ * contando como impago, que es justamente lo que hay que ver.
+ */
+export function maintenancePeriods(
+  project: Project,
+  charges: MaintenanceCharge[] = [],
+  today = new Date(),
+): MaintenancePeriods {
+  const empty: MaintenancePeriods = { next: null, overdue: [], overdueTotal: {} }
+  const m = project.maintenance
+  if (!m.active || m.status !== 'Activo') return empty
+
+  const own = charges.filter((c) => c.projectId === project.id)
+  const earliestCharge = own.reduce<string | null>(
+    (min, c) => (min === null || c.chargedOn < min ? c.chargedOn : min),
+    null,
   )
-  // advance until strictly in the future relative to today
-  let guard = 0
-  while (candidate <= today && guard < 240) {
-    candidate.setMonth(candidate.getMonth() + step)
-    guard++
+  const anchor =
+    m.startDate ?? m.implementationDate ?? earliestCharge ?? m.lastCollectedDate
+  if (!anchor) return empty
+
+  const { past, next } = dueDateSeries(m, anchor, today)
+  const boundaries = next ? [...past, next] : past
+
+  const covered = new Set<number>()
+  for (const charge of own) {
+    let index = -1
+    for (let i = 0; i < boundaries.length; i++) {
+      if (charge.chargedOn >= boundaries[i]) index = i
+      else break
+    }
+    covered.add(index < 0 ? 0 : index)
   }
-  // if last collected exists, ensure we moved at least one period past it
-  const y = candidate.getFullYear()
-  const mo = String(candidate.getMonth() + 1).padStart(2, '0')
-  const da = String(candidate.getDate()).padStart(2, '0')
-  return `${y}-${mo}-${da}`
+
+  const overdue = past.filter((_, i) => !covered.has(i))
+  const overdueTotal: MoneyByCurrency =
+    overdue.length > 0 ? { [m.currency]: overdue.length * m.amount } : {}
+
+  return { next: overdue[0] ?? next, overdue, overdueTotal }
 }
 
 export type AlertLevel = 'critical' | 'warning' | 'info'
@@ -129,6 +273,13 @@ interface AlertInput {
   projects: Project[]
   notes: Note[]
   tasks?: Task[]
+  /** Opcional: sin los cobros no hay forma de saber qué períodos quedaron impagos. */
+  maintenanceCharges?: MaintenanceCharge[]
+}
+
+/** dd/mm, que es todo lo que entra en el detalle de una alerta. */
+function shortDay(iso: string): string {
+  return `${iso.slice(8, 10)}/${iso.slice(5, 7)}`
 }
 
 /**
@@ -139,32 +290,43 @@ export function buildAlerts({
   projects,
   notes,
   tasks = [],
+  maintenanceCharges = [],
 }: AlertInput): AlertItem[] {
   const alerts: AlertItem[] = []
 
   // Maintenance charges
   for (const project of projects) {
-    const next = nextMaintenanceCharge(project)
+    const { next, overdue, overdueTotal } = maintenancePeriods(
+      project,
+      maintenanceCharges,
+    )
     if (!next) continue
-    const d = daysUntil(next)
-    if (d === null) continue
-    if (d < 0) {
+    // Una sola alerta por proyecto, aunque haya seis períodos sin cobrar:
+    // el conteo y lo adeudado van en el detalle.
+    if (overdue.length > 0) {
       alerts.push({
         id: `mnt-${project.id}`,
         level: 'critical',
         category: 'Mantenimientos',
         title: `Mantenimiento vencido · ${project.name}`,
-        detail: `Cobro previsto ${next}`,
+        detail: `${overdue.length} cobro${overdue.length > 1 ? 's' : ''} sin registrar desde el ${shortDay(overdue[0])} · ${formatMoneyByCurrency(overdueTotal)}`,
         projectId: project.id,
-        date: next,
+        date: overdue[0],
       })
-    } else if (d <= 7) {
+      continue
+    }
+    const d = daysUntil(next)
+    if (d === null) continue
+    if (d >= 0 && d <= 7) {
       alerts.push({
         id: `mnt-${project.id}`,
         level: 'warning',
         category: 'Mantenimientos',
         title: `Mantenimiento por cobrar · ${project.name}`,
-        detail: `Cobro en ${d} día(s) (${next})`,
+        detail:
+          d === 0
+            ? `Se cobra hoy (${shortDay(next)})`
+            : `Cobro en ${d} día(s) (${shortDay(next)})`,
         projectId: project.id,
         date: next,
       })

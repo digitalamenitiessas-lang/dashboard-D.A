@@ -52,8 +52,9 @@ export function EditInfrastructureDialog({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (saving) return
     setSaving(true)
-    await updateInfrastructure(project.id, {
+    const ok = await updateInfrastructure(project.id, {
       productionUrl: productionUrl.trim(),
       stagingUrl: stagingUrl.trim(),
       repo: repo.trim(),
@@ -67,6 +68,7 @@ export function EditInfrastructureDialog({
       automations: toLines(automations),
     })
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Infraestructura actualizada')
     onOpenChange(false)
   }

@@ -41,7 +41,7 @@ import { cn } from '@/lib/utils'
 
 export default function NotasPage() {
   const router = useRouter()
-  const { notes, deleteNote, convertNoteToProject } = useStore()
+  const { notes, addNote, deleteNote, convertNoteToProject } = useStore()
   const [query, setQuery] = React.useState('')
   const [categoryFilter, setCategoryFilter] = React.useState('todas')
   const [editTarget, setEditTarget] = React.useState<Note | null>(null)
@@ -72,6 +72,32 @@ export default function NotasPage() {
     if (!newId) return // the store already surfaced the error
     toast.success('Nota convertida en proyecto', { description: title })
     router.push(`/proyectos/${newId}`)
+  }
+
+  /**
+   * Una nota no mueve plata, así que no se pregunta antes: se borra y se
+   * ofrece deshacer. Vuelve con otro id y otra fecha de creación, que es
+   * todo lo que se pierde.
+   */
+  async function handleDelete(note: Note) {
+    if (!(await deleteNote(note.id))) return
+    toast.success('Nota eliminada', {
+      description: note.title,
+      action: {
+        label: 'Deshacer',
+        onClick: () =>
+          void addNote({
+            projectId: note.projectId,
+            title: note.title,
+            content: note.content,
+            author: note.author,
+            priority: note.priority,
+            category: note.category,
+            tags: note.tags,
+            reminderDate: note.reminderDate,
+          }),
+      },
+    })
   }
 
   return (
@@ -219,11 +245,8 @@ export default function NotasPage() {
                     <Button
                       size="icon"
                       variant="ghost"
-                      aria-label="Eliminar nota"
-                      onClick={async () => {
-                        await deleteNote(note.id)
-                        toast.success('Nota eliminada')
-                      }}
+                      aria-label={`Eliminar nota: ${note.title}`}
+                      onClick={() => void handleDelete(note)}
                     >
                       <Trash2 />
                     </Button>

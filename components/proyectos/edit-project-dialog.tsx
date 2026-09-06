@@ -56,9 +56,10 @@ export function EditProjectDialog({
       toast.error('El nombre del proyecto es obligatorio')
       return
     }
+    if (saving) return
     setSaving(true)
     const client = clients.find((c) => c.id === clientId)
-    await updateProject(project.id, {
+    const ok = await updateProject(project.id, {
       name: name.trim(),
       description: description.trim(),
       type,
@@ -76,6 +77,7 @@ export function EditProjectDialog({
       currency,
     })
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Proyecto actualizado')
     onOpenChange(false)
   }

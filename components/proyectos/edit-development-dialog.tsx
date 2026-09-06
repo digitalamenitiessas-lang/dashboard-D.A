@@ -42,13 +42,15 @@ export function EditDevelopmentDialog({
       toast.error('El avance debe estar entre 0 y 100')
       return
     }
+    if (saving) return
     setSaving(true)
-    await updateDevelopment(project.id, {
+    const ok = await updateDevelopment(project.id, {
       stage: stage.trim(),
       progress: pct,
       nextGoal: nextGoal.trim(),
     })
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Desarrollo actualizado')
     onOpenChange(false)
   }

@@ -27,6 +27,32 @@ export function formatMoneyWithCode(amount: number, currency: Currency) {
   }).format(amount)
 }
 
+/**
+ * Today as "yyyy-mm-dd", read off the local clock.
+ *
+ * `new Date().toISOString().slice(0, 10)` is the obvious way to write this
+ * and it is the wrong one: it answers in UTC, so from 21:00 Argentine time
+ * onward it already says tomorrow. A cobro loaded at night would be dated a
+ * day late — and one loaded on the last night of the month would land in the
+ * next month, taking the closing with it.
+ *
+ * Same convention the readers below use: a 10-character date is a local day,
+ * not an instant.
+ */
+export function todayIso(today = new Date()): string {
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${today.getFullYear()}-${month}-${day}`
+}
+
+/**
+ * Current month as "yyyy-mm", local as well — the month-end closing is
+ * exactly the moment where a UTC "today" lands on the wrong side.
+ */
+export function currentMonthIso(today = new Date()): string {
+  return todayIso(today).slice(0, 7)
+}
+
 export function formatDate(iso: string | null | undefined) {
   if (!iso) return '—'
   const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''))

@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { CircleDollarSign, Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
@@ -12,7 +13,12 @@ import { monthlyInfraCost } from '@/lib/derive'
 import { formatMoney } from '@/lib/format'
 import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { MAINTENANCE_FREQUENCIES } from '@/lib/types'
-import type { Currency, MaintenanceFrequency, Project } from '@/lib/types'
+import type {
+  Currency,
+  InfraCost,
+  MaintenanceFrequency,
+  Project,
+} from '@/lib/types'
 
 /** Recurring infra spend for one project, with inline add/remove. */
 export function InfraCostsCard({ project }: { project: Project }) {
@@ -28,17 +34,40 @@ export function InfraCostsCard({ project }: { project: Project }) {
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!concept.trim() || !(Number(amount) > 0)) return
+    if (!concept.trim() || !(Number(amount) > 0) || adding) return
     setAdding(true)
-    await addInfraCost(project.id, {
+    const ok = await addInfraCost(project.id, {
       concept: concept.trim(),
       amount: Number(amount),
       currency,
       frequency,
     })
+    setAdding(false)
+    // Si falló, lo cargado queda en el formulario: el store ya avisó por qué.
+    if (!ok) return
     setConcept('')
     setAmount('')
-    setAdding(false)
+  }
+
+  /**
+   * Un costo de infra es un dato de referencia, no plata movida: se borra y
+   * se ofrece deshacer, que vuelve a cargarlo tal cual estaba (con otro id).
+   */
+  async function remove(cost: InfraCost) {
+    if (!(await deleteInfraCost(project.id, cost.id))) return
+    toast.success('Costo eliminado', {
+      description: cost.concept,
+      action: {
+        label: 'Deshacer',
+        onClick: () =>
+          void addInfraCost(project.id, {
+            concept: cost.concept,
+            amount: cost.amount,
+            currency: cost.currency,
+            frequency: cost.frequency,
+          }),
+      },
+    })
   }
 
   return (
@@ -62,7 +91,7 @@ export function InfraCostsCard({ project }: { project: Project }) {
                   variant="ghost"
                   aria-label={`Eliminar costo: ${c.concept}`}
                   className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                  onClick={() => void deleteInfraCost(project.id, c.id)}
+                  onClick={() => void remove(c)}
                 >
                   <Trash2 />
                 </Button>

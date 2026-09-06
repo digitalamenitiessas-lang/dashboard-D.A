@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useStore } from '@/lib/store'
@@ -50,11 +51,29 @@ export function TaskList({
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     const title = draft.trim()
-    if (!title) return
+    if (!title || adding) return
     setAdding(true)
-    await addTask(projectId, kind, title)
-    setDraft('')
+    const ok = await addTask(projectId, kind, title)
     setAdding(false)
+    // Si falló, el texto queda escrito: el store ya avisó qué pasó.
+    if (!ok) return
+    setDraft('')
+  }
+
+  /**
+   * Un pendiente no mueve plata, así que no hace falta preguntar antes: se
+   * borra y se ofrece deshacer, que es lo que la gente busca cuando erra el
+   * click. El pendiente vuelve como nuevo, sin la fecha de completado.
+   */
+  async function remove(task: Task) {
+    if (!(await deleteTask(task.id))) return
+    toast.success('Pendiente eliminado', {
+      description: task.title,
+      action: {
+        label: 'Deshacer',
+        onClick: () => void addTask(task.projectId, task.kind, task.title),
+      },
+    })
   }
 
   return (
@@ -115,7 +134,7 @@ export function TaskList({
                 variant="ghost"
                 aria-label={`Eliminar: ${task.title}`}
                 className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-                onClick={() => void deleteTask(task.id)}
+                onClick={() => void remove(task)}
               >
                 <Trash2 />
               </Button>

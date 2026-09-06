@@ -18,11 +18,9 @@ import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
-import { formatMoney } from '@/lib/format'
+import { formatMoney, todayIso } from '@/lib/format'
 import { MOVEMENT_CATEGORIES } from '@/lib/types'
 import type { MoneyMovement, MovementCategory } from '@/lib/types'
-
-const todayIso = () => new Date().toISOString().slice(0, 10)
 
 const round = (n: number, decimals: number) => {
   const factor = 10 ** decimals
@@ -96,6 +94,7 @@ export function MovementDialog({
   const [projectId, setProjectId] = React.useState(movement?.projectId ?? '')
   const [notes, setNotes] = React.useState(movement?.notes ?? '')
   const [saving, setSaving] = React.useState(false)
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false)
 
   const sides = shape[category]
   const fromAccount = accounts.find((a) => a.id === fromId)
@@ -152,7 +151,7 @@ export function MovementDialog({
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!valid) return
+    if (!valid || saving) return
     setSaving(true)
     const payload = {
       movedOn,
@@ -165,197 +164,267 @@ export function MovementDialog({
       projectId: projectId || null,
       notes: notes.trim(),
     }
-    if (movement) await updateMovement(movement.id, payload)
-    else await addMovement(payload)
+    const ok = movement
+      ? await updateMovement(movement.id, payload)
+      : await addMovement(payload)
     setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success(editing ? 'Movimiento actualizado' : 'Movimiento registrado')
     onOpenChange(false)
   }
 
   async function handleDelete() {
-    if (!movement) return
+    if (!movement || saving) return
     setSaving(true)
-    await deleteMovement(movement.id)
+    const ok = await deleteMovement(movement.id)
     setSaving(false)
+    if (!ok) return
+    setConfirmingDelete(false)
     toast.success('Movimiento eliminado')
     onOpenChange(false)
   }
 
+  // Lo que el borrado le devuelve a cada cuenta, para poder mostrarlo antes
+  // de tocar nada: los saldos son derivados, así que borrar acá los reescribe.
+  const savedFrom = accounts.find((a) => a.id === movement?.fromAccountId)
+  const savedTo = accounts.find((a) => a.id === movement?.toAccountId)
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {editing ? 'Editar movimiento' : 'Registrar movimiento'}
-          </DialogTitle>
-          <DialogDescription>{hint[category]}</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={submit}>
-          <FieldGroup>
-            <div className="grid grid-cols-2 gap-4">
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {editing ? 'Editar movimiento' : 'Registrar movimiento'}
+            </DialogTitle>
+            <DialogDescription>{hint[category]}</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={submit}>
+            <FieldGroup>
+              <div className="grid grid-cols-2 gap-4">
+                <Field>
+                  <FieldLabel htmlFor="mov-category">Tipo</FieldLabel>
+                  <SimpleSelect
+                    id="mov-category"
+                    value={category}
+                    onValueChange={(v) => setCategory(v as MovementCategory)}
+                    options={toOptions(MOVEMENT_CATEGORIES)}
+                  />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="mov-date">Fecha</FieldLabel>
+                  <Input
+                    id="mov-date"
+                    type="date"
+                    value={movedOn}
+                    onChange={(e) => setMovedOn(e.target.value)}
+                  />
+                </Field>
+              </div>
+
+              {sides.from ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="mov-from">Sale de</FieldLabel>
+                    <AccountSelect
+                      id="mov-from"
+                      value={fromId}
+                      onValueChange={setFromId}
+                      excludeId={toId || undefined}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="mov-out">
+                      Monto{fromAccount ? ` (${fromAccount.currency})` : ''}
+                    </FieldLabel>
+                    <MoneyInput
+                      id="mov-out"
+                      value={amountOut}
+                      onValueChange={changeAmountOut}
+                      placeholder="0"
+                    />
+                  </Field>
+                </div>
+              ) : null}
+
+              {crossCurrency ? (
+                <Field>
+                  <FieldLabel htmlFor="mov-rate">
+                    Cotización — 1 {fromAccount?.currency} en{' '}
+                    {toAccount?.currency}
+                  </FieldLabel>
+                  <MoneyInput
+                    id="mov-rate"
+                    value={rate}
+                    onValueChange={changeRate}
+                    decimals={6}
+                    placeholder="0"
+                  />
+                </Field>
+              ) : null}
+
+              {sides.to ? (
+                <div className="grid grid-cols-2 gap-4">
+                  <Field>
+                    <FieldLabel htmlFor="mov-to">Entra a</FieldLabel>
+                    <AccountSelect
+                      id="mov-to"
+                      value={toId}
+                      onValueChange={setToId}
+                      excludeId={fromId || undefined}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="mov-in">
+                      Monto{toAccount ? ` (${toAccount.currency})` : ''}
+                    </FieldLabel>
+                    <MoneyInput
+                      id="mov-in"
+                      value={amountIn}
+                      onValueChange={changeAmountIn}
+                      placeholder="0"
+                      disabled={sameCurrency}
+                    />
+                  </Field>
+                </div>
+              ) : null}
+
+              {crossCurrency && out > 0 && income > 0 ? (
+                <p className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs text-muted-foreground text-pretty">
+                  <span className="font-medium tabular-nums text-foreground">
+                    {formatMoney(out, fromAccount?.currency)} →{' '}
+                    {formatMoney(income, toAccount?.currency)}
+                  </span>{' '}
+                  — completá dos de los tres campos y el tercero se calcula
+                  solo.
+                </p>
+              ) : null}
+
               <Field>
-                <FieldLabel htmlFor="mov-category">Tipo</FieldLabel>
-                <SimpleSelect
-                  id="mov-category"
-                  value={category}
-                  onValueChange={(v) => setCategory(v as MovementCategory)}
-                  options={toOptions(MOVEMENT_CATEGORIES)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="mov-date">Fecha</FieldLabel>
+                <FieldLabel htmlFor="mov-concept">Concepto</FieldLabel>
                 <Input
-                  id="mov-date"
-                  type="date"
-                  value={movedOn}
-                  onChange={(e) => setMovedOn(e.target.value)}
+                  id="mov-concept"
+                  value={concept}
+                  onChange={(e) => setConcept(e.target.value)}
+                  placeholder="Ej: Cambio en la cueva / Hosting de julio"
                 />
               </Field>
-            </div>
 
-            {sides.from ? (
-              <div className="grid grid-cols-2 gap-4">
-                <Field>
-                  <FieldLabel htmlFor="mov-from">Sale de</FieldLabel>
-                  <AccountSelect
-                    id="mov-from"
-                    value={fromId}
-                    onValueChange={setFromId}
-                    excludeId={toId || undefined}
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="mov-out">
-                    Monto{fromAccount ? ` (${fromAccount.currency})` : ''}
-                  </FieldLabel>
-                  <MoneyInput
-                    id="mov-out"
-                    value={amountOut}
-                    onValueChange={changeAmountOut}
-                    placeholder="0"
-                  />
-                </Field>
-              </div>
-            ) : null}
-
-            {crossCurrency ? (
               <Field>
-                <FieldLabel htmlFor="mov-rate">
-                  Cotización — 1 {fromAccount?.currency} en{' '}
-                  {toAccount?.currency}
+                <FieldLabel htmlFor="mov-project">
+                  Proyecto relacionado (opcional)
                 </FieldLabel>
-                <MoneyInput
-                  id="mov-rate"
-                  value={rate}
-                  onValueChange={changeRate}
-                  decimals={6}
-                  placeholder="0"
+                <SimpleSelect
+                  id="mov-project"
+                  value={projectId}
+                  onValueChange={setProjectId}
+                  placeholder="Ninguno"
+                  options={[
+                    { value: '', label: 'Ninguno' },
+                    ...projects.map((p) => ({ value: p.id, label: p.name })),
+                  ]}
                 />
               </Field>
-            ) : null}
 
-            {sides.to ? (
-              <div className="grid grid-cols-2 gap-4">
-                <Field>
-                  <FieldLabel htmlFor="mov-to">Entra a</FieldLabel>
-                  <AccountSelect
-                    id="mov-to"
-                    value={toId}
-                    onValueChange={setToId}
-                    excludeId={fromId || undefined}
-                  />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="mov-in">
-                    Monto{toAccount ? ` (${toAccount.currency})` : ''}
-                  </FieldLabel>
-                  <MoneyInput
-                    id="mov-in"
-                    value={amountIn}
-                    onValueChange={changeAmountIn}
-                    placeholder="0"
-                    disabled={sameCurrency}
-                  />
-                </Field>
+              <Field>
+                <FieldLabel htmlFor="mov-notes">Observaciones</FieldLabel>
+                <Textarea
+                  id="mov-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                />
+              </Field>
+            </FieldGroup>
+
+            <DialogFooter className="mt-6 sm:justify-between">
+              {editing ? (
+                <Button
+                  type="button"
+                  variant="destructive"
+                  disabled={saving}
+                  onClick={() => setConfirmingDelete(true)}
+                >
+                  Eliminar
+                </Button>
+              ) : (
+                <span />
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => onOpenChange(false)}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={saving || !valid}>
+                  {saving ? 'Guardando...' : editing ? 'Guardar' : 'Registrar'}
+                </Button>
               </div>
-            ) : null}
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
-            {crossCurrency && out > 0 && income > 0 ? (
-              <p className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs text-muted-foreground text-pretty">
-                <span className="font-medium tabular-nums text-foreground">
-                  {formatMoney(out, fromAccount?.currency)} →{' '}
-                  {formatMoney(income, toAccount?.currency)}
-                </span>{' '}
-                — completá dos de los tres campos y el tercero se calcula
-                solo.
-              </p>
-            ) : null}
-
-            <Field>
-              <FieldLabel htmlFor="mov-concept">Concepto</FieldLabel>
-              <Input
-                id="mov-concept"
-                value={concept}
-                onChange={(e) => setConcept(e.target.value)}
-                placeholder="Ej: Cambio en la cueva / Hosting de julio"
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="mov-project">
-                Proyecto relacionado (opcional)
-              </FieldLabel>
-              <SimpleSelect
-                id="mov-project"
-                value={projectId}
-                onValueChange={setProjectId}
-                placeholder="Ninguno"
-                options={[
-                  { value: '', label: 'Ninguno' },
-                  ...projects.map((p) => ({ value: p.id, label: p.name })),
-                ]}
-              />
-            </Field>
-
-            <Field>
-              <FieldLabel htmlFor="mov-notes">Observaciones</FieldLabel>
-              <Textarea
-                id="mov-notes"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                rows={2}
-              />
-            </Field>
-          </FieldGroup>
-
-          <DialogFooter className="mt-6 sm:justify-between">
-            {editing ? (
-              <Button
-                type="button"
-                variant="destructive"
-                disabled={saving}
-                onClick={() => void handleDelete()}
-              >
-                Eliminar
-              </Button>
-            ) : (
-              <span />
-            )}
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => onOpenChange(false)}
-              >
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={saving || !valid}>
-                {saving ? 'Guardando...' : editing ? 'Guardar' : 'Registrar'}
-              </Button>
-            </div>
+      {/* Un movimiento borrado le mueve el saldo a las dos cuentas que tocaba,
+          y el saldo no se guarda en ningún lado: se recalcula solo. Antes de
+          eso se muestra exactamente qué cuenta cambia y por cuánto. */}
+      <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>¿Eliminar el movimiento?</DialogTitle>
+            <DialogDescription>
+              Se recalculan los saldos de las cuentas que tocaba. No se puede
+              deshacer.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+            <p className="text-sm font-medium">
+              {movement?.concept || movement?.category}
+            </p>
+            <ul className="mt-2 flex flex-col gap-1 text-sm">
+              {savedFrom && movement && movement.amountOut > 0 ? (
+                <li className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-muted-foreground">
+                    Le vuelve a {savedFrom.name}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums text-emerald-300">
+                    +{formatMoney(movement.amountOut, savedFrom.currency)}
+                  </span>
+                </li>
+              ) : null}
+              {savedTo && movement && movement.amountIn > 0 ? (
+                <li className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-muted-foreground">
+                    Se le descuenta a {savedTo.name}
+                  </span>
+                  <span className="shrink-0 font-semibold tabular-nums text-red-300">
+                    −{formatMoney(movement.amountIn, savedTo.currency)}
+                  </span>
+                </li>
+              ) : null}
+            </ul>
+          </div>
+          <DialogFooter className="mt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setConfirmingDelete(false)}
+            >
+              No, dejarlo
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={saving}
+              onClick={() => void handleDelete()}
+            >
+              {saving ? 'Eliminando...' : 'Sí, eliminar'}
+            </Button>
           </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }

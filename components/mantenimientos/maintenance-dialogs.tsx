@@ -19,7 +19,7 @@ import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
-import { formatMoney } from '@/lib/format'
+import { formatMoney, todayIso } from '@/lib/format'
 import { MAINTENANCE_FREQUENCIES } from '@/lib/types'
 import type {
   Currency,
@@ -27,8 +27,6 @@ import type {
   PaymentMethod,
   Project,
 } from '@/lib/types'
-
-const todayIso = () => new Date().toISOString().slice(0, 10)
 
 const methods: PaymentMethod[] = [
   'Transferencia',
@@ -73,6 +71,7 @@ export function ActivateMaintenanceDialog({
   )
   const [services, setServices] = React.useState(m?.services.join('\n') ?? '')
   const [markInMaintenance, setMarkInMaintenance] = React.useState(true)
+  const [saving, setSaving] = React.useState(false)
 
   // Picking a project mid-dialog re-seeds whatever it already had stored,
   // and decides whether moving its status makes sense.
@@ -97,8 +96,9 @@ export function ActivateMaintenanceDialog({
     !!target && Number(amount) > 0 && Number(dueDay) >= 1 && Number(dueDay) <= 28
 
   async function submit() {
-    if (!valid || !target) return
-    await activateMaintenance(
+    if (!valid || !target || saving) return
+    setSaving(true)
+    const ok = await activateMaintenance(
       target.id,
       {
         implementationDate: target.implementationDate ?? startDate,
@@ -114,6 +114,8 @@ export function ActivateMaintenanceDialog({
       },
       { markProjectInMaintenance: markInMaintenance },
     )
+    setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Mantenimiento activado', { description: target.name })
     onOpenChange(false)
   }
@@ -235,8 +237,8 @@ export function ActivateMaintenanceDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={() => void submit()} disabled={!valid}>
-            Activar
+          <Button onClick={() => void submit()} disabled={saving || !valid}>
+            {saving ? 'Activando...' : 'Activar'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -259,15 +261,24 @@ export function CollectMaintenanceDialog({
   const [method, setMethod] = React.useState<PaymentMethod>('Transferencia')
   const [receipt, setReceipt] = React.useState('')
   const [accountId, setAccountId] = React.useState('')
+  const [saving, setSaving] = React.useState(false)
 
+  const valid = Number(amount) > 0
+
+  // Sin este candado el botón sigue clickeable durante el await y un doble
+  // click carga el mismo cobro dos veces: plata duplicada en la caja.
   async function submit() {
-    await collectMaintenance(project.id, {
+    if (!valid || saving) return
+    setSaving(true)
+    const ok = await collectMaintenance(project.id, {
       date,
       amount: Number(amount),
       method,
       receipt: receipt.trim() || null,
       accountId: accountId || null,
     })
+    setSaving(false)
+    if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Mantenimiento cobrado', {
       description: `${project.name} — ${formatMoney(
         Number(amount),
@@ -338,8 +349,8 @@ export function CollectMaintenanceDialog({
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={() => void submit()} disabled={!(Number(amount) > 0)}>
-            Confirmar cobro
+          <Button onClick={() => void submit()} disabled={saving || !valid}>
+            {saving ? 'Registrando...' : 'Confirmar cobro'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -20,7 +20,7 @@ import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
 import {
   buildAlerts,
-  nextMaintenanceCharge,
+  maintenancePeriods,
   projectFinance,
   type AlertLevel,
 } from '@/lib/derive'
@@ -30,7 +30,6 @@ import {
   formatMoneyByCurrency,
   isEmptyMoney,
   mergeMoney,
-  pendingMoney,
 } from '@/lib/money'
 import { ACTIVE_STATUSES } from '@/lib/status'
 import { cn } from '@/lib/utils'
@@ -56,7 +55,9 @@ export default function DashboardPage() {
   // Income is payments plus recurring fees; the outstanding balance is only
   // ever measured against the quoted work, so maintenance stays out of it.
   const totalCollected = mergeMoney(totalPaid, totalMaintenance)
-  const pending = pendingMoney(totalQuoted, totalPaid)
+  // El piso en cero se pone proyecto por proyecto: si se pusiera recién sobre
+  // el total, un proyecto cobrado de más taparía la deuda de otro.
+  const pending = mergeMoney(...finances.map((f) => f.pendingByCurrency))
   const collectedPct = collectionRatio(totalQuoted, totalPaid)
 
   const own = projects.filter((p) => p.type === 'propio').length
@@ -78,12 +79,22 @@ export default function DashboardPage() {
     .slice(0, 4)
 
   const maintenanceDue = projects
-    .map((p) => ({ project: p, next: nextMaintenanceCharge(p) }))
-    .filter((m): m is { project: (typeof projects)[number]; next: string } => !!m.next)
+    .flatMap((project) => {
+      const { next, overdue, overdueTotal } = maintenancePeriods(
+        project,
+        maintenanceCharges,
+      )
+      return next ? [{ project, next, overdue, overdueTotal }] : []
+    })
     .sort((a, b) => a.next.localeCompare(b.next))
     .slice(0, 4)
 
-  const alerts = buildAlerts({ projects, notes, tasks }).slice(0, 5)
+  const alerts = buildAlerts({
+    projects,
+    notes,
+    tasks,
+    maintenanceCharges,
+  }).slice(0, 5)
 
   const recentProjects = [...projects]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -186,21 +197,25 @@ export default function DashboardPage() {
             {maintenanceDue.length === 0 ? (
               <li className="text-sm text-muted-foreground">Sin mantenimientos activos.</li>
             ) : (
-              maintenanceDue.map(({ project, next }) => {
-                const overdue = (daysUntil(next) ?? 0) < 0
+              maintenanceDue.map(({ project, next, overdue, overdueTotal }) => {
+                const late = overdue.length > 0
                 return (
                   <li key={project.id} className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{project.name}</p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {project.maintenance.frequency} · {formatDate(next)}
+                        {late
+                          ? `${overdue.length} sin cobrar desde ${formatDate(next)}`
+                          : `${project.maintenance.frequency} · ${formatDate(next)}`}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="text-sm font-semibold tabular-nums">
-                        {formatMoney(project.maintenance.amount, project.maintenance.currency)}
+                      <p className={cn('text-sm font-semibold tabular-nums', late && 'text-red-300')}>
+                        {late
+                          ? formatMoneyByCurrency(overdueTotal)
+                          : formatMoney(project.maintenance.amount, project.maintenance.currency)}
                       </p>
-                      <p className={cn('text-xs', overdue ? 'text-red-300' : 'text-muted-foreground')}>
+                      <p className={cn('text-xs', late ? 'text-red-300' : 'text-muted-foreground')}>
                         {relativeDays(next)}
                       </p>
                     </div>

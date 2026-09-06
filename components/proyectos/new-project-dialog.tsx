@@ -21,9 +21,7 @@ import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { useStore } from '@/lib/store'
 import { PROJECT_STATUSES } from '@/lib/types'
-import type { Currency, Priority, Project, ProjectStatus, ProjectType } from '@/lib/types'
-
-const todayIso = () => new Date().toISOString().slice(0, 10)
+import type { Currency, Priority, ProjectStatus, ProjectType } from '@/lib/types'
 
 /**
  * Works both uncontrolled (renders its own trigger button) and controlled
@@ -81,6 +79,7 @@ export function NewProjectDialog({
       toast.error('El nombre del proyecto es obligatorio')
       return
     }
+    if (saving) return
     setSaving(true)
     const client = clients.find((c) => c.id === clientId)
     const id = await addProject({
