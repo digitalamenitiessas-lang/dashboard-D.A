@@ -50,7 +50,7 @@ export function AlertsMenu() {
           <p className="text-sm font-semibold">Alertas</p>
           <span className="text-xs text-muted-foreground">{alerts.length} activas</span>
         </div>
-        <div className="max-h-80 overflow-y-auto">
+        <div className="max-h-80 overflow-x-hidden overflow-y-auto">
           {alerts.length === 0 ? (
             <p className="px-3 py-6 text-center text-sm text-muted-foreground">
               Sin alertas. Todo en orden.

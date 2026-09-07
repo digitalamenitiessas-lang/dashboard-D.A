@@ -104,7 +104,7 @@ function DialogContent({
             que el contenido no se transparente por atrás. */}
         <div
           data-slot="dialog-body"
-          className="grid min-h-0 gap-4 overflow-y-auto overscroll-contain p-4 [&_[data-slot=dialog-footer]]:sticky [&_[data-slot=dialog-footer]]:-bottom-4 [&_[data-slot=dialog-footer]]:z-10 [&_[data-slot=dialog-footer]]:-mx-4 [&_[data-slot=dialog-footer]]:-mb-4 [&_[data-slot=dialog-footer]]:supports-backdrop-filter:backdrop-blur-md"
+          className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain p-4 [&>*]:min-w-0 [&_[data-slot=dialog-footer]]:sticky [&_[data-slot=dialog-footer]]:-bottom-4 [&_[data-slot=dialog-footer]]:z-10 [&_[data-slot=dialog-footer]]:-mx-4 [&_[data-slot=dialog-footer]]:-mb-4 [&_[data-slot=dialog-footer]]:supports-backdrop-filter:backdrop-blur-md"
         >
           {cuerpo}
         </div>

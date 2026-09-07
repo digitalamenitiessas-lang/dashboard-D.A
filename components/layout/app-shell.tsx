@@ -53,7 +53,7 @@ export function AppShell({
         <div className="flex h-[calc(4rem+env(safe-area-inset-top))] items-center border-b border-white/5 px-5 pt-[env(safe-area-inset-top)]">
           <Brand />
         </div>
-        <div className="flex-1 overflow-y-auto px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <div className="flex-1 overflow-x-hidden overflow-y-auto px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <SidebarNav />
           {/* Los avisos son una preferencia de ESTE dispositivo, no una
               alerta: vive acá abajo, con su etiqueta, y no al lado de la
@@ -90,7 +90,7 @@ export function AppShell({
             <SheetContent
               side="left"
               showCloseButton={false}
-              className="w-72 overflow-y-auto border-white/10 bg-background/95 p-0 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] backdrop-blur-xl"
+              className="w-72 overflow-x-hidden overflow-y-auto border-white/10 bg-background/95 p-0 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] backdrop-blur-xl"
             >
               <SheetTitle className="sr-only">Navegación</SheetTitle>
               <div className="flex h-[calc(4rem+env(safe-area-inset-top))] items-center border-b border-white/5 px-5 pt-[env(safe-area-inset-top)]">
