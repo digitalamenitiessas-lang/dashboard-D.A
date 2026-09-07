@@ -35,7 +35,7 @@ import { TaskList } from '@/components/proyectos/task-list'
 import { EditProjectDialog } from '@/components/proyectos/edit-project-dialog'
 import { EditDevelopmentDialog } from '@/components/proyectos/edit-development-dialog'
 import { EditInfrastructureDialog } from '@/components/proyectos/edit-infrastructure-dialog'
-import { InfraCostsCard } from '@/components/proyectos/infra-costs-card'
+import { FixedCostsCard } from '@/components/proyectos/fixed-costs-card'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
 import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
@@ -483,7 +483,7 @@ export default function ProjectDetailPage() {
               <TodoList items={infra.automations} empty="Ninguna" />
             </DetailCard>
 
-            <InfraCostsCard project={project} />
+            <FixedCostsCard project={project} />
           </div>
         </TabsContent>
 

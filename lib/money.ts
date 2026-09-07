@@ -65,6 +65,31 @@ export function pendingMoney(
   return pending
 }
 
+/**
+ * `a - b`, bucket por bucket, iterando la UNIÓN de las dos.
+ *
+ * Dos diferencias deliberadas con `pendingMoney()`, que es la otra resta del
+ * archivo y hace justo lo contrario en las dos:
+ *
+ * 1. No pisa el negativo en cero. Un proyecto puede dar pérdida, y un
+ *    resultado que nunca baja de cero no es un resultado, es un consuelo.
+ *    `pendingMoney()` sí lo pisa porque «cobrado de más» no es deuda.
+ * 2. Itera la unión y no sólo las monedas de `a`. Si hubo gastos en dólares y
+ *    ningún ingreso en dólares, esa moneda tiene que aparecer en rojo, no
+ *    desaparecer del total.
+ */
+export function subtractMoney(
+  a: MoneyByCurrency,
+  b: MoneyByCurrency,
+): MoneyByCurrency {
+  const result: MoneyByCurrency = {}
+  for (const currency of CURRENCY_ORDER) {
+    if (a[currency] === undefined && b[currency] === undefined) continue
+    result[currency] = (a[currency] ?? 0) - (b[currency] ?? 0)
+  }
+  return result
+}
+
 export function isEmptyMoney(totals: MoneyByCurrency): boolean {
   return entries(totals).every(([, amount]) => Math.round(amount) === 0)
 }

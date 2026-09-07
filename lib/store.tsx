@@ -8,11 +8,13 @@ import {
   accountToRow,
   clientToRow,
   developmentToRow,
+  fixedExpenseToRow,
   infrastructureToRow,
   maintenanceToRow,
   mapAccount,
   mapActivity,
   mapClient,
+  mapFixedExpense,
   mapMaintenanceCharge,
   mapMovement,
   mapNote,
@@ -30,6 +32,7 @@ import type {
   ActivityEntry,
   Client,
   Development,
+  FixedExpense,
   InfraCost,
   Infrastructure,
   Maintenance,
@@ -71,8 +74,16 @@ interface StoreValue {
   maintenanceCharges: MaintenanceCharge[]
   accounts: Account[]
   movements: MoneyMovement[]
+  /**
+   * Los gastos comprometidos. Son un PLAN: lo que realmente se pagó vive en
+   * `movements`, y el estado de cada período se deriva cruzando los dos
+   * (`lib/gastos.ts`). Acá no hay nada de plata que haya salido.
+   */
+  fixedExpenses: FixedExpense[]
   /** False until `08_caja.sql` has been run on the database. */
   cajaReady: boolean
+  /** False mientras no se haya corrido `10_gastos.sql`. Mismo degradado. */
+  gastosReady: boolean
   refresh: () => Promise<void>
 
   // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
@@ -139,6 +150,19 @@ interface StoreValue {
   ) => Promise<boolean>
   deleteMovement: (id: string) => Promise<boolean>
 
+  // gastos fijos
+  //
+  // NO hay `payFixedExpense`, y es a propósito: un pago se registra con
+  // `addMovement`, que ya existe. Una sola vía de escritura a
+  // `money_movements` es la mitad de la defensa contra el doble conteo; la
+  // otra mitad es el índice único (fixed_expense_id, period_start).
+  addFixedExpense: (expense: Omit<FixedExpense, 'id'>) => Promise<boolean>
+  updateFixedExpense: (
+    id: string,
+    patch: Partial<FixedExpense>,
+  ) => Promise<boolean>
+  deleteFixedExpense: (id: string) => Promise<boolean>
+
   // maintenance
   activateMaintenance: (
     id: string,
@@ -159,6 +183,47 @@ interface StoreValue {
       accountId?: string | null
     },
   ) => Promise<boolean>
+}
+
+/**
+ * Los tres errores de Postgres del módulo de gastos que un usuario va a ver
+ * sí o sí, traducidos a algo que se pueda leer y que además diga qué hacer.
+ * El resto de los errores pasa crudo: inventarle una explicación a algo que
+ * no conocemos es peor que mostrar el texto de la base.
+ *
+ * Los tres son defensas reales, no validaciones cosméticas, así que el
+ * mensaje explica la salida en vez de pedir que se reintente:
+ *
+ *   - `money_movements_gasto_fijo_periodo_uidx` — el mismo período de un
+ *     gasto fijo pagado dos veces (una desde Caja y otra desde el botón
+ *     Pagar). La base rechaza el segundo.
+ *   - `money_movements_fixed_expense_id_fkey` — el FK es RESTRICT: un plan
+ *     con pagos no se borra. Aparece de dos maneras y por eso hace falta
+ *     `scope`: borrando el gasto fijo, o borrando el proyecto, porque el
+ *     cascade de `fixed_expenses_project_id_fkey` intenta llevarse el plan
+ *     y el que aborta es igual este FK, con el mismo nombre en el mensaje.
+ */
+function enCriollo(e: unknown, scope?: 'proyecto'): string | null {
+  const parts: string[] = [e instanceof Error ? e.message : String(e)]
+  if (typeof e === 'object' && e !== null) {
+    const { details, hint } = e as { details?: unknown; hint?: unknown }
+    if (details) parts.push(String(details))
+    if (hint) parts.push(String(hint))
+  }
+  const raw = parts.join(' ')
+
+  if (raw.includes('money_movements_gasto_fijo_periodo_uidx')) {
+    return 'Ese período ya está registrado como pagado. Si el pago se hizo en dos partes, editá el movimiento o cargá el resto como gasto suelto.'
+  }
+  if (
+    raw.includes('money_movements_fixed_expense_id_fkey') ||
+    raw.includes('fixed_expenses_project_id_fkey')
+  ) {
+    return scope === 'proyecto'
+      ? 'El proyecto tiene un gasto fijo con pagos. Dale de baja primero.'
+      : 'Este gasto fijo tiene pagos registrados: no se borra, se da de baja poniéndole fecha de fin.'
+  }
+  return null
 }
 
 const StoreContext = React.createContext<StoreValue | null>(null)
@@ -185,18 +250,31 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   >([])
   const [accounts, setAccounts] = React.useState<Account[]>([])
   const [movements, setMovements] = React.useState<MoneyMovement[]>([])
+  const [fixedExpenses, setFixedExpenses] = React.useState<FixedExpense[]>([])
   const [cajaReady, setCajaReady] = React.useState(true)
+  const [gastosReady, setGastosReady] = React.useState(true)
 
-  /** Surfaces the failure to the user and keeps it out of the happy path. */
-  const fail = React.useCallback((action: string, e: unknown) => {
-    const message = e instanceof Error ? e.message : String(e)
-    console.error(`[store] ${action}:`, e)
-    toast.error(`No se pudo ${action}`, { description: message })
-  }, [])
+  /**
+   * Surfaces the failure to the user and keeps it out of the happy path.
+   *
+   * `scope` sólo lo usa `enCriollo`, y hoy sólo para una cosa: distinguir el
+   * FK del gasto fijo cuando el que se está borrando es el proyecto. La base
+   * informa el mismo nombre de constraint en los dos casos.
+   */
+  const fail = React.useCallback(
+    (action: string, e: unknown, scope?: 'proyecto') => {
+      const message = e instanceof Error ? e.message : String(e)
+      console.error(`[store] ${action}:`, e)
+      toast.error(`No se pudo ${action}`, {
+        description: enCriollo(e, scope) ?? message,
+      })
+    },
+    [],
+  )
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc, acc, mov] = await Promise.all([
+      const [p, c, pay, n, a, t, mc, acc, mov, fe] = await Promise.all([
         supabase
           .from('projects')
           .select(PROJECT_SELECT)
@@ -227,15 +305,25 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .from('money_movements')
           .select('*')
           .order('moved_on', { ascending: false }),
+        supabase.from('fixed_expenses').select('*').order('concept'),
       ])
 
       // Caja is the newest module: if 08_caja.sql hasn't been run yet its
       // tables are simply missing. That shouldn't take down the whole app,
       // so it degrades to an empty Caja that says what to do.
-      const cajaMissing = [acc.error, mov.error].some(
-        (e) => e && (e.code === 'PGRST205' || /does not exist/i.test(e.message)),
-      )
+      const missing = (e: typeof acc.error) =>
+        !!e && (e.code === 'PGRST205' || /does not exist/i.test(e.message))
+
+      const cajaMissing = [acc.error, mov.error].some(missing)
       setCajaReady(!cajaMissing)
+
+      // Mismo criterio para gastos: sin `10_gastos.sql` la tabla no existe y
+      // la pantalla degrada a un cartel que dice qué correr. Las tres
+      // columnas nuevas de money_movements no hacen falta chequearlas: el
+      // select es `*`, así que simplemente no vienen y el mapper las deja en
+      // null.
+      const gastosMissing = missing(fe.error)
+      setGastosReady(!gastosMissing)
 
       const firstError =
         p.error ||
@@ -245,7 +333,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         a.error ||
         t.error ||
         mc.error ||
-        (cajaMissing ? null : acc.error || mov.error)
+        (cajaMissing ? null : acc.error || mov.error) ||
+        (gastosMissing ? null : fe.error)
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -257,6 +346,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setMaintenanceCharges((mc.data ?? []).map(mapMaintenanceCharge))
       setAccounts((acc.data ?? []).map(mapAccount))
       setMovements((mov.data ?? []).map(mapMovement))
+      setFixedExpenses((fe.data ?? []).map(mapFixedExpense))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -387,9 +477,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         setPayments((prev) => prev.filter((p) => p.projectId !== id))
         setTasks((prev) => prev.filter((t) => t.projectId !== id))
         setMaintenanceCharges((prev) => prev.filter((c) => c.projectId !== id))
+        // El FK de fixed_expenses es CASCADE: los planes del proyecto se
+        // fueron con él.
+        setFixedExpenses((prev) => prev.filter((f) => f.projectId !== id))
         return true
       } catch (e) {
-        fail('eliminar el proyecto', e)
+        // Si alguno de esos planes tenía pagos, el cascade lo frena el
+        // RESTRICT de money_movements y no se borró nada: el mensaje lo
+        // aclara.
+        fail('eliminar el proyecto', e, 'proyecto')
         return false
       }
     },
@@ -934,6 +1030,83 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   )
 
   // -------------------------------------------------------------------
+  // Gastos fijos
+  //
+  // El plan, nada más. Pagar un período es un `addMovement` con
+  // fixed_expense_id y period_start: acá no hay ninguna función que escriba
+  // en money_movements, y eso no es un olvido.
+  // -------------------------------------------------------------------
+  const sortFixedExpenses = (list: FixedExpense[]) =>
+    [...list].sort((a, b) => a.concept.localeCompare(b.concept))
+
+  const addFixedExpense = React.useCallback(
+    async (expense: Omit<FixedExpense, 'id'>) => {
+      try {
+        const { data, error } = await supabase
+          .from('fixed_expenses')
+          .insert(fixedExpenseToRow(expense))
+          .select()
+          .single()
+        if (error) throw error
+        setFixedExpenses((prev) =>
+          sortFixedExpenses([...prev, mapFixedExpense(data)]),
+        )
+        return true
+      } catch (e) {
+        fail('crear el gasto fijo', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
+  const updateFixedExpense = React.useCallback(
+    async (id: string, patch: Partial<FixedExpense>) => {
+      try {
+        const row = fixedExpenseToRow(patch)
+        if (Object.keys(row).length === 0) return true
+        const { data, error } = await supabase
+          .from('fixed_expenses')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        setFixedExpenses((prev) =>
+          sortFixedExpenses(
+            prev.map((f) => (f.id === id ? mapFixedExpense(data) : f)),
+          ),
+        )
+        return true
+      } catch (e) {
+        fail('guardar el gasto fijo', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
+  const deleteFixedExpense = React.useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase
+          .from('fixed_expenses')
+          .delete()
+          .eq('id', id)
+        if (error) throw error
+        setFixedExpenses((prev) => prev.filter((f) => f.id !== id))
+        return true
+      } catch (e) {
+        // Un plan con pagos no se borra: el FK es RESTRICT y `enCriollo`
+        // explica que la salida es ponerle fecha de fin.
+        fail('eliminar el gasto fijo', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
+  // -------------------------------------------------------------------
   // Maintenance
   // -------------------------------------------------------------------
   const updateMaintenance = React.useCallback(
@@ -1074,7 +1247,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       maintenanceCharges,
       accounts,
       movements,
+      fixedExpenses,
       cajaReady,
+      gastosReady,
       refresh,
       addProject,
       updateProject,
@@ -1103,6 +1278,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addMovement,
       updateMovement,
       deleteMovement,
+      addFixedExpense,
+      updateFixedExpense,
+      deleteFixedExpense,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,
@@ -1119,7 +1297,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       maintenanceCharges,
       accounts,
       movements,
+      fixedExpenses,
       cajaReady,
+      gastosReady,
       refresh,
       addProject,
       updateProject,
@@ -1148,6 +1328,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addMovement,
       updateMovement,
       deleteMovement,
+      addFixedExpense,
+      updateFixedExpense,
+      deleteFixedExpense,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,

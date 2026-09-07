@@ -36,13 +36,9 @@ import { PageHeader } from '@/components/shared/page-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { SectionCard } from '@/components/dashboard/section-card'
 import { useStore } from '@/lib/store'
-import { monthlyInfraCost } from '@/lib/derive'
+import { committedMonthly } from '@/lib/gastos'
 import { formatDate, relativeDays, daysUntil } from '@/lib/format'
-import {
-  formatMoneyByCurrency,
-  isEmptyMoney,
-  mergeMoney,
-} from '@/lib/money'
+import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
 
 /** Projects only appear here once they have something deployed to track. */
@@ -51,7 +47,7 @@ function hasInfra(infra: { repo: string; hosting: string; domain: string; produc
 }
 
 export default function InfraestructuraPage() {
-  const { projects } = useStore()
+  const { projects, fixedExpenses } = useStore()
   const [query, setQuery] = React.useState('')
 
   const withInfra = projects.filter((p) => hasInfra(p.infrastructure))
@@ -70,8 +66,14 @@ export default function InfraestructuraPage() {
     )
   })
 
-  // Monthly-normalized infrastructure spend across every project.
-  const monthlyCost = mergeMoney(...projects.map(monthlyInfraCost))
+  // El compromiso de infraestructura, normalizado a mes y por moneda: sale
+  // de los gastos fijos vigentes de rubro Infraestructura, incluidos los de
+  // estructura que no cuelgan de ningún proyecto. Es un compromiso, no caja:
+  // un dominio de USD 120 al año aporta USD 10 por mes acá y cae entero en
+  // un solo mes en /gastos.
+  const monthlyCost = committedMonthly(fixedExpenses, {
+    kind: 'Infraestructura',
+  })
 
   const domains = projects
     .filter((p) => p.infrastructure.domain && p.infrastructure.domainExpiry)
@@ -243,7 +245,11 @@ export default function InfraestructuraPage() {
             <TableBody>
               {filtered.map((p) => {
                 const i = p.infrastructure
-                const cost = monthlyInfraCost(p)
+                // Acá va TODO lo fijo imputado al proyecto, no sólo el rubro
+                // Infraestructura: es lo que ese proyecto cuesta por mes, que
+                // es la pregunta que se hace mirando esta fila. Por eso puede
+                // no cerrar contra el total de arriba, que sí filtra el rubro.
+                const cost = committedMonthly(fixedExpenses, { projectId: p.id })
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">

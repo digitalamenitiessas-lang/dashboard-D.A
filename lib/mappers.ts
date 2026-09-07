@@ -6,6 +6,7 @@ import type {
   ActivityEntry,
   Client,
   Development,
+  FixedExpense,
   InfraCost,
   Infrastructure,
   Maintenance,
@@ -175,6 +176,38 @@ export function mapAccount(r: Row): Account {
   }
 }
 
+/**
+ * El plan, no el pago. `fixed_expenses` no tiene columna `status`: la
+ * vigencia sale del rango, así que `ended_on` nulo se mapea a null y no se
+ * inventa ningún estado.
+ *
+ * Los defaults espejan los de la tabla (`kind` 'Otros', `currency` 'ARS',
+ * `frequency` 'Mensual', `due_day` 1) para que una fila vieja o incompleta
+ * no rompa la pantalla.
+ */
+export function mapFixedExpense(r: Row): FixedExpense {
+  return {
+    id: r.id,
+    concept: str(r.concept),
+    kind: r.kind ?? 'Otros',
+    vendor: str(r.vendor),
+    projectId: r.project_id ?? null,
+    amount: num(r.amount),
+    currency: r.currency ?? 'ARS',
+    frequency: r.frequency ?? 'Mensual',
+    dueDay: num(r.due_day, 1),
+    startedOn: r.started_on,
+    endedOn: r.ended_on ?? null,
+    notes: str(r.notes),
+  }
+}
+
+/**
+ * Las tres últimas columnas sólo existen si se corrió `10_gastos.sql`. Contra
+ * una base sin ese script PostgREST ni siquiera las devuelve, y por eso acá
+ * caen en null en vez de romper: un movimiento viejo es un movimiento válido
+ * sin rubro.
+ */
 export function mapMovement(r: Row): MoneyMovement {
   return {
     id: r.id,
@@ -187,6 +220,9 @@ export function mapMovement(r: Row): MoneyMovement {
     amountIn: num(r.amount_in),
     projectId: r.project_id ?? null,
     notes: str(r.notes),
+    expenseKind: r.expense_kind ?? null,
+    fixedExpenseId: r.fixed_expense_id ?? null,
+    periodStart: r.period_start ?? null,
   }
 }
 
@@ -313,6 +349,35 @@ export function accountToRow(a: Partial<Account>): Row {
   })
 }
 
+export function fixedExpenseToRow(e: Partial<FixedExpense>): Row {
+  return pick(e, {
+    concept: 'concept',
+    kind: 'kind',
+    vendor: 'vendor',
+    projectId: 'project_id',
+    amount: 'amount',
+    currency: 'currency',
+    frequency: 'frequency',
+    dueDay: 'due_day',
+    startedOn: 'started_on',
+    endedOn: 'ended_on',
+    notes: 'notes',
+  })
+}
+
+/**
+ * OJO con las tres columnas de gasto, que no es cosmético:
+ *
+ * `pick()` descarta `undefined` pero NO descarta `null`, a propósito — mandar
+ * `null` es la única forma de vaciar una columna. La contracara es que quien
+ * arma el payload (hoy `MovementDialog`) tiene que mandar `expenseKind`,
+ * `fixedExpenseId` y `periodStart` como `undefined`, nunca como `null`,
+ * mientras `gastosReady` sea false: contra una base sin `10_gastos.sql`
+ * corrido esas columnas no existen, PostgREST contesta PGRST204 y no se
+ * podría guardar NINGÚN movimiento de NINGUNA categoría, ni un cambio de
+ * moneda. Con `undefined` la clave ni sale, y Caja sigue andando igual que
+ * antes hasta que la migración esté.
+ */
 export function movementToRow(m: Partial<MoneyMovement>): Row {
   return pick(m, {
     movedOn: 'moved_on',
@@ -324,6 +389,9 @@ export function movementToRow(m: Partial<MoneyMovement>): Row {
     amountIn: 'amount_in',
     projectId: 'project_id',
     notes: 'notes',
+    expenseKind: 'expense_kind',
+    fixedExpenseId: 'fixed_expense_id',
+    periodStart: 'period_start',
   })
 }
 

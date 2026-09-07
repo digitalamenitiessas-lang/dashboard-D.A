@@ -18,9 +18,16 @@ import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
-import { formatMoney, todayIso } from '@/lib/format'
-import { MOVEMENT_CATEGORIES } from '@/lib/types'
-import type { MoneyMovement, MovementCategory } from '@/lib/types'
+import { formatDate, formatMoney, formatMoneyWithCode, todayIso } from '@/lib/format'
+import {
+  expenseEntries,
+  expensePeriods,
+  isActiveOn,
+  payablePeriods,
+  type ExpensePeriod,
+} from '@/lib/gastos'
+import { EXPENSE_KINDS, MOVEMENT_CATEGORIES } from '@/lib/types'
+import type { ExpenseKind, MoneyMovement, MovementCategory } from '@/lib/types'
 
 const round = (n: number, decimals: number) => {
   const factor = 10 ** decimals
@@ -38,6 +45,12 @@ const asAmount = (n: number) => String(round(n, 2))
  * Which sides of a movement each category uses. This is the whole reason
  * the form stays readable: a gasto only ever asks where the money left
  * from, an ingreso only where it landed.
+ *
+ * El Ajuste usa los dos lados y no exige ninguno: una corrección de saldo
+ * puede ir para arriba (entra a) o para abajo (sale de). Hasta hace poco
+ * sólo tenía el lado de entrada, así que para bajar un saldo había que
+ * cargar un 'Gasto' — y eso mete en el reporte de gastos plata que nunca se
+ * gastó. Es la ÚNICA categoría con los dos lados opcionales: ver `sidesOk`.
  */
 const shape: Record<MovementCategory, { from: boolean; to: boolean }> = {
   'Cambio de moneda': { from: true, to: true },
@@ -46,7 +59,7 @@ const shape: Record<MovementCategory, { from: boolean; to: boolean }> = {
   Retiro: { from: true, to: true },
   Inversión: { from: true, to: true },
   'Ingreso extra': { from: false, to: true },
-  Ajuste: { from: false, to: true },
+  Ajuste: { from: true, to: true },
 }
 
 const hint: Record<MovementCategory, string> = {
@@ -56,28 +69,132 @@ const hint: Record<MovementCategory, string> = {
   Retiro: 'Lo que se llevan ustedes, a la cuenta de Retiros.',
   Inversión: 'Compra de cheques o cualquier plata que queda invertida.',
   'Ingreso extra': 'Plata que entra y no viene de un cobro de proyecto.',
-  Ajuste: 'Corrección de saldo cuando la cuenta no cierra.',
+  Ajuste:
+    'Corrección de saldo cuando la cuenta no cierra: completá un solo lado, el de arriba para bajarla y el de abajo para subirla.',
+}
+
+/**
+ * «Sale de» para un Gasto: las mismas cuentas que `AccountSelect`, pero sin
+ * las de tipo Retiros.
+ *
+ * No va adentro de `AccountSelect` porque la regla es de esta categoría y de
+ * ninguna otra: en un Retiro esa cuenta es justamente el destino correcto.
+ * Es la mitad barata de la defensa contra el doble conteo — la plata que ya
+ * se repartieron los socios no puede volver a salir como gasto de la
+ * empresa. Importa más desde que los socios cobran por retiro y el empleado
+ * por sueldo: los dos se parecen y uno solo es gasto.
+ *
+ * `keepId` es la cuenta que el movimiento YA tenía guardada. Se ofrece
+ * aunque sea de Retiros (o esté archivada) porque si no, editar uno mal
+ * cargado mostraría el campo vacío mintiendo sobre lo que hay en la base.
+ * Los que están así los lista el cartel de /gastos, y se arreglan pasándolos
+ * a categoría Retiro.
+ */
+function ExpenseFromSelect({
+  id,
+  value,
+  onValueChange,
+  excludeId,
+  keepId,
+}: {
+  id?: string
+  value: string
+  onValueChange: (value: string) => void
+  excludeId?: string
+  keepId?: string
+}) {
+  const { accounts } = useStore()
+
+  const options = accounts
+    .filter((a) => a.id !== excludeId)
+    .filter((a) => a.id === keepId || (!a.archived && a.kind !== 'Retiros'))
+    .map((a) => ({ value: a.id, label: `${a.name} · ${a.currency}` }))
+
+  return (
+    <SimpleSelect
+      id={id}
+      value={value}
+      onValueChange={onValueChange}
+      placeholder={options.length === 0 ? 'Sin cuentas' : 'Elegir cuenta'}
+      options={options}
+    />
+  )
+}
+
+/** Cómo se lee un período en el select: por su vencimiento, no por su clave. */
+function periodLabel(p: ExpensePeriod): string {
+  const base = `Vence ${formatDate(p.dueDate)}`
+  if (p.state === 'vencido') {
+    const n = p.daysLate ?? 0
+    return `${base} · vencido hace ${n} ${n === 1 ? 'día' : 'días'}`
+  }
+  return base
+}
+
+/**
+ * Valores con los que abrir el diálogo ya cargado.
+ *
+ * Lo usa el botón «Pagar» de /gastos: en vez de un formulario propio —que
+ * sería una segunda vía de escribir en `money_movements`, y con eso la mitad
+ * del doble conteo— abre este mismo con el plan y el período puestos. El
+ * rubro y el proyecto no viajan acá: salen del plan, que es de donde tienen
+ * que salir para no poder contradecirlo.
+ */
+export interface MovementPreset {
+  category?: MovementCategory
+  fixedExpenseId?: string
+  /** Si falta, se preselecciona el vencido más viejo del plan. */
+  periodStart?: string
+  concept?: string
 }
 
 export function MovementDialog({
   movement,
+  preset,
   open,
   onOpenChange,
 }: {
   /** Omit to create a new one. */
   movement?: MoneyMovement
+  /** Sólo se lee al montar; el diálogo se monta con `key` al abrirse. */
+  preset?: MovementPreset
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, projects, addMovement, updateMovement, deleteMovement } =
-    useStore()
+  const {
+    accounts,
+    projects,
+    movements,
+    fixedExpenses,
+    gastosReady,
+    addMovement,
+    updateMovement,
+    deleteMovement,
+  } = useStore()
   const editing = Boolean(movement)
+  const hoy = todayIso()
+
+  // Los gastos ya registrados, SIN filtrar por rango: el calendario de un
+  // plan necesita ver los pagos de meses anteriores. Con un rango de un mes,
+  // el pago de agosto no taparía el período de agosto y el select ofrecería
+  // pagarlo de nuevo.
+  const entries = React.useMemo(
+    () => expenseEntries({ movements, accounts }),
+    [movements, accounts],
+  )
+
+  // El plan que viene preseteado desde /gastos, si hay. Se resuelve una vez,
+  // antes de los estados iniciales.
+  const presetPlan =
+    fixedExpenses.find((e) => e.id === preset?.fixedExpenseId) ?? null
 
   const [category, setCategory] = React.useState<MovementCategory>(
-    movement?.category ?? 'Cambio de moneda',
+    movement?.category ?? preset?.category ?? 'Cambio de moneda',
   )
   const [movedOn, setMovedOn] = React.useState(movement?.movedOn ?? todayIso())
-  const [concept, setConcept] = React.useState(movement?.concept ?? '')
+  const [concept, setConcept] = React.useState(
+    movement?.concept ?? preset?.concept ?? '',
+  )
   const [fromId, setFromId] = React.useState(movement?.fromAccountId ?? '')
   const [amountOut, setAmountOut] = React.useState(
     movement ? String(movement.amountOut) : '',
@@ -91,8 +208,24 @@ export function MovementDialog({
       ? asRate(movement.amountIn / movement.amountOut)
       : '',
   )
-  const [projectId, setProjectId] = React.useState(movement?.projectId ?? '')
+  const [projectId, setProjectId] = React.useState(
+    movement?.projectId ?? presetPlan?.projectId ?? '',
+  )
   const [notes, setNotes] = React.useState(movement?.notes ?? '')
+
+  // --- Gasto: rubro, plan y período ------------------------------------
+  const [kind, setKind] = React.useState<ExpenseKind | ''>(
+    movement?.expenseKind ?? presetPlan?.kind ?? '',
+  )
+  const [planId, setPlanId] = React.useState(
+    movement?.fixedExpenseId ?? presetPlan?.id ?? '',
+  )
+  const [period, setPeriod] = React.useState(
+    movement?.periodStart ??
+      preset?.periodStart ??
+      (presetPlan ? (payablePeriods(presetPlan, entries)[0]?.periodStart ?? '') : ''),
+  )
+
   const [saving, setSaving] = React.useState(false)
   const [confirmingDelete, setConfirmingDelete] = React.useState(false)
 
@@ -100,10 +233,21 @@ export function MovementDialog({
   const fromAccount = accounts.find((a) => a.id === fromId)
   const toAccount = accounts.find((a) => a.id === toId)
 
+  const isGasto = category === 'Gasto'
+  const isAjuste = category === 'Ajuste'
+  /** Los tres campos de gasto sólo existen si la migración 10 está corrida. */
+  const showGasto = isGasto && gastosReady
+
+  const plan = fixedExpenses.find((e) => e.id === planId) ?? null
+
   // Same currency on both sides means it's one amount, not two.
+  // En un Ajuste no: los dos lados son alternativos, no las dos patas de una
+  // misma operación, así que enlazar los montos escribiría un lado que el
+  // usuario no cargó.
   const sameCurrency =
     sides.from &&
     sides.to &&
+    !isAjuste &&
     !!fromAccount &&
     !!toAccount &&
     fromAccount.currency === toAccount.currency
@@ -112,7 +256,15 @@ export function MovementDialog({
     if (sameCurrency) setAmountIn(amountOut)
   }, [sameCurrency, amountOut])
 
-  const crossCurrency = sides.from && sides.to && !!fromAccount && !!toAccount && !sameCurrency
+  // Misma razón para la cotización: en una corrección de saldo no hay
+  // conversión de nada, hay dos casillas y se usa una.
+  const crossCurrency =
+    sides.from &&
+    sides.to &&
+    !isAjuste &&
+    !!fromAccount &&
+    !!toAccount &&
+    !sameCurrency
 
   // Amount, rate and result are three views of the same operation, so
   // editing any one of them keeps the other two honest. Whichever two the
@@ -141,29 +293,141 @@ export function MovementDialog({
     if (nextIn > 0 && nextOut > 0) setRate(asRate(nextIn / nextOut))
   }
 
+  function changeCategory(next: MovementCategory) {
+    setCategory(next)
+    // Un Gasto no puede salir de la cuenta de Retiros. Si venía elegida de
+    // otra categoría hay que soltarla, o el campo mostraría el placeholder
+    // con un id cargado abajo.
+    if (
+      next === 'Gasto' &&
+      fromId !== movement?.fromAccountId &&
+      accounts.find((a) => a.id === fromId)?.kind === 'Retiros'
+    ) {
+      setFromId('')
+    }
+  }
+
+  /**
+   * Los períodos que se pueden elegir: `payablePeriods()` más el que este
+   * mismo movimiento ya salda. Ese está 'pagado' justamente por él, así que
+   * sin la excepción editar un pago abriría el select vacío y guardar le
+   * borraría el período al plan.
+   */
+  const periodOptions = React.useMemo(() => {
+    if (!plan) return []
+    const own =
+      movement && movement.fixedExpenseId === plan.id ? movement.periodStart : null
+    return expensePeriods(plan, entries).filter(
+      (p) => p.state !== 'pagado' || p.periodStart === own,
+    )
+  }, [plan, entries, movement])
+
+  /**
+   * Elegir un plan hereda el rubro y el proyecto (visibles y editables: el
+   * plan sugiere, no manda) y preselecciona el vencido más viejo, que es lo
+   * que corresponde saldar cuando hay mora.
+   */
+  function changePlan(id: string) {
+    setPlanId(id)
+    const next = fixedExpenses.find((e) => e.id === id) ?? null
+    if (!next) {
+      setPeriod('')
+      return
+    }
+    setPeriod(payablePeriods(next, entries)[0]?.periodStart ?? '')
+    setKind(next.kind)
+    setProjectId(next.projectId ?? '')
+    suggestAmount(next, fromAccount?.currency, true)
+  }
+
+  /**
+   * El monto sugerido sale del plan SÓLO si la cuenta elegida está en la
+   * misma moneda. Lo que se guarda es lo que realmente salió, en la moneda
+   * de esa cuenta: escribir 20 en una cuenta en pesos porque el plan dice
+   * USD 20 es la forma más corta de cargar veinte pesos donde iban veinte
+   * dólares. Si no coinciden, el campo queda vacío y arriba se muestra el
+   * comprometido para que se convierta a mano.
+   */
+  function suggestAmount(
+    forPlan: { amount: number; currency: string },
+    accountCurrency: string | undefined,
+    force: boolean,
+  ) {
+    const matches = !!accountCurrency && accountCurrency === forPlan.currency
+    if (matches) {
+      if (force || !(Number(amountOut) > 0)) setAmountOut(asAmount(forPlan.amount))
+      return
+    }
+    // No pisa un monto tipeado a mano: sólo limpia la sugerencia que dejó de
+    // valer al cambiar de moneda.
+    if (force || Number(amountOut) === forPlan.amount) setAmountOut('')
+  }
+
+  function changeFrom(id: string) {
+    setFromId(id)
+    if (!plan) return
+    suggestAmount(plan, accounts.find((a) => a.id === id)?.currency, false)
+  }
+
   const out = Number(amountOut)
   const income = Number(amountIn)
-  const valid =
-    movedOn &&
-    (!sides.from || (fromId && out > 0)) &&
-    (!sides.to || (toId && income > 0)) &&
-    fromId !== toId
+
+  // Un lado cargado a medias (cuenta sin monto) es un renglón basura: se
+  // pide entero o vacío.
+  const fromWhole = !!fromId && out > 0
+  const toWhole = !!toId && income > 0
+  const fromEmpty = !fromId && !(out > 0)
+  const toEmpty = !toId && !(income > 0)
+
+  /**
+   * El Ajuste, y sólo el Ajuste, se conforma con un lado. Las otras seis
+   * categorías siguen exigiendo los dos lados que declara `shape`: una
+   * Transferencia guardada a medio cargar haría desaparecer plata entre dos
+   * cuentas propias, que es exactamente el error que Caja existe para no
+   * cometer.
+   */
+  const sidesOk = isAjuste
+    ? (fromWhole || toWhole) && (fromWhole || fromEmpty) && (toWhole || toEmpty)
+    : (!sides.from || fromWhole) && (!sides.to || toWhole)
+
+  // Rubro obligatorio en los gastos nuevos. En los viejos no: nacieron sin la
+  // columna y se clasifican desde el cartel de /gastos, no a la fuerza acá.
+  // Y un pago imputado a un plan siempre dice qué período salda — lo pide la
+  // base, así que mejor frenarlo antes que traducir el error después.
+  const gastoOk =
+    !showGasto || ((editing || kind !== '') && (!planId || period !== ''))
+
+  const valid = Boolean(movedOn) && sidesOk && fromId !== toId && gastoOk
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!valid || saving) return
     setSaving(true)
+    // Las tres claves de gasto viajan como `undefined` —no `null`— mientras
+    // falte la migración: `pick()` descarta undefined, la clave no sale en el
+    // payload y PostgREST no rechaza el movimiento ENTERO con PGRST204 contra
+    // una base sin las columnas. El tipo las declara requeridas, así que el
+    // cast vive acá, que es el único lugar donde «la columna todavía no
+    // existe» es un caso conocido.
     const payload = {
       movedOn,
       category,
       concept: concept.trim(),
-      fromAccountId: sides.from ? fromId : null,
-      amountOut: sides.from ? out : 0,
-      toAccountId: sides.to ? toId : null,
-      amountIn: sides.to ? income : 0,
+      fromAccountId: sides.from && fromId ? fromId : null,
+      amountOut: sides.from && fromId ? out : 0,
+      toAccountId: sides.to && toId ? toId : null,
+      amountIn: sides.to && toId ? income : 0,
       projectId: projectId || null,
       notes: notes.trim(),
-    }
+      expenseKind: gastosReady ? (isGasto ? kind || null : null) : undefined,
+      fixedExpenseId: gastosReady ? (isGasto ? planId || null : null) : undefined,
+      periodStart: gastosReady
+        ? isGasto && planId
+          ? period || null
+          : null
+        : undefined,
+    } as Omit<MoneyMovement, 'id'>
+
     const ok = movement
       ? await updateMovement(movement.id, payload)
       : await addMovement(payload)
@@ -189,6 +453,18 @@ export function MovementDialog({
   const savedFrom = accounts.find((a) => a.id === movement?.fromAccountId)
   const savedTo = accounts.find((a) => a.id === movement?.toAccountId)
 
+  // Los planes que se pueden pagar hoy, más el que el movimiento ya tenía
+  // (un plan dado de baja sigue apareciendo mientras se edita su pago).
+  const planOptions = fixedExpenses
+    .filter((e) => isActiveOn(e, hoy) || e.id === planId)
+    .map((e) => ({
+      value: e.id,
+      label: `${e.concept} · ${formatMoneyWithCode(e.amount, e.currency)}`,
+    }))
+
+  const currencyMismatch =
+    !!plan && !!fromAccount && fromAccount.currency !== plan.currency
+
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
@@ -207,7 +483,7 @@ export function MovementDialog({
                   <SimpleSelect
                     id="mov-category"
                     value={category}
-                    onValueChange={(v) => setCategory(v as MovementCategory)}
+                    onValueChange={(v) => changeCategory(v as MovementCategory)}
                     options={toOptions(MOVEMENT_CATEGORIES)}
                   />
                 </Field>
@@ -222,16 +498,94 @@ export function MovementDialog({
                 </Field>
               </div>
 
+              {showGasto ? (
+                <>
+                  <Field>
+                    <FieldLabel htmlFor="mov-kind">Rubro</FieldLabel>
+                    <SimpleSelect
+                      id="mov-kind"
+                      value={kind}
+                      onValueChange={(v) => setKind(v as ExpenseKind)}
+                      placeholder="Elegir rubro"
+                      options={toOptions(EXPENSE_KINDS)}
+                    />
+                  </Field>
+
+                  <Field>
+                    <FieldLabel htmlFor="mov-plan">
+                      ¿Paga un gasto fijo?
+                    </FieldLabel>
+                    <SimpleSelect
+                      id="mov-plan"
+                      value={planId}
+                      onValueChange={changePlan}
+                      placeholder="Ninguno"
+                      options={[
+                        { value: '', label: 'Ninguno — gasto suelto' },
+                        ...planOptions,
+                      ]}
+                    />
+                  </Field>
+
+                  {plan ? (
+                    <Field>
+                      <FieldLabel htmlFor="mov-period">¿Qué período?</FieldLabel>
+                      {periodOptions.length > 0 ? (
+                        <SimpleSelect
+                          id="mov-period"
+                          value={period}
+                          onValueChange={setPeriod}
+                          placeholder="Elegir período"
+                          options={periodOptions.map((p) => ({
+                            value: p.periodStart,
+                            label: periodLabel(p),
+                          }))}
+                        />
+                      ) : (
+                        <p className="text-xs text-muted-foreground text-pretty">
+                          Este gasto fijo no tiene ningún período por pagar. Si
+                          igual salió plata, cargala como gasto suelto.
+                        </p>
+                      )}
+                    </Field>
+                  ) : null}
+
+                  {plan ? (
+                    <p className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs text-muted-foreground text-pretty">
+                      <span className="font-medium tabular-nums text-foreground">
+                        Comprometido: {formatMoneyWithCode(plan.amount, plan.currency)}
+                      </span>{' '}
+                      por período.{' '}
+                      {currencyMismatch
+                        ? `La cuenta elegida está en ${fromAccount?.currency}: poné lo que salió de verdad, que es lo que se guarda.`
+                        : 'Si salió otro monto, corregilo: se guarda lo que salió, no lo comprometido.'}
+                    </p>
+                  ) : null}
+                </>
+              ) : null}
+
               {sides.from ? (
                 <div className="grid grid-cols-2 gap-4">
                   <Field>
                     <FieldLabel htmlFor="mov-from">Sale de</FieldLabel>
-                    <AccountSelect
-                      id="mov-from"
-                      value={fromId}
-                      onValueChange={setFromId}
-                      excludeId={toId || undefined}
-                    />
+                    {isGasto ? (
+                      <ExpenseFromSelect
+                        id="mov-from"
+                        value={fromId}
+                        onValueChange={changeFrom}
+                        excludeId={toId || undefined}
+                        keepId={movement?.fromAccountId ?? undefined}
+                      />
+                    ) : (
+                      <AccountSelect
+                        id="mov-from"
+                        value={fromId}
+                        onValueChange={changeFrom}
+                        excludeId={toId || undefined}
+                        allowNone={isAjuste}
+                        noneLabel="No corresponde"
+                      />
+                    )}
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="mov-out">
@@ -272,6 +626,8 @@ export function MovementDialog({
                       value={toId}
                       onValueChange={setToId}
                       excludeId={fromId || undefined}
+                      allowNone={isAjuste}
+                      noneLabel="No corresponde"
                     />
                   </Field>
                   <Field>

@@ -185,11 +185,90 @@ export const MOVEMENT_CATEGORIES = [
 export type MovementCategory = (typeof MOVEMENT_CATEGORIES)[number]
 
 /**
+ * En qué se gastó. Enum y no texto libre porque en seis meses habría 'AWS',
+ * 'aws' y 'Amazon' y la pregunta «¿en qué gastamos?» dejaría de tener
+ * respuesta. La lista arranca generosa a propósito: agregar un valor después
+ * es un script SQL nuevo (y `alter type ... add value` ni siquiera deja usar
+ * el valor recién agregado en ese mismo script).
+ *
+ * Dos aclaraciones que no son cosméticas:
+ *
+ * - `Sueldos` es el sueldo del EMPLEADO, que es gasto fijo de estructura. Lo
+ *   que cobran los socios no va acá: es un movimiento categoría 'Retiro' a
+ *   una cuenta `kind === 'Retiros'` y nunca entra al resultado. Cargar un
+ *   retiro de socio como Sueldos cuenta esa plata dos veces.
+ * - `Comisiones por venta` es lo que se le paga al empleado por cerrar un
+ *   proyecto: costo DIRECTO, se carga como gasto suelto con `projectId`.
+ *   `Comisiones bancarias` son las del banco, que son de estructura. Van
+ *   separadas porque una se le imputa a un proyecto y la otra no.
+ */
+export const EXPENSE_KINDS = [
+  'Infraestructura',
+  'Herramientas',
+  'Sueldos',
+  'Honorarios',
+  'Impuestos',
+  'Servicios',
+  'Comisiones bancarias',
+  'Comisiones por venta',
+  'Marketing',
+  'Equipamiento',
+  'Otros',
+] as const
+
+export type ExpenseKind = (typeof EXPENSE_KINDS)[number]
+
+/**
+ * Un gasto comprometido: el servidor, el sueldo del empleado, el contador.
+ * Es un PLAN, no es plata que salió — lo que se pagó de verdad vive siempre
+ * en `MoneyMovement`, y el estado de cada período se deriva cruzando los dos.
+ *
+ * `projectId` null = gasto de estructura, no imputable a ningún proyecto.
+ *
+ * No hay campo `status`: la vigencia se lee del rango
+ * (`startedOn <= hoy && (endedOn === null || endedOn >= hoy)`). Un `status`
+ * al lado de un `endedOn` son dos formas de decir lo mismo y una de las dos
+ * siempre termina mintiendo. Dar de baja es poner `endedOn`, y los pagos
+ * anteriores quedan intactos.
+ *
+ * Tampoco hay cuenta sugerida: un plan en USD con cuenta por defecto en pesos
+ * es la forma más corta de cargar 20 pesos donde iban 20 dólares. La cuenta
+ * se elige en cada pago.
+ */
+export interface FixedExpense {
+  id: string
+  concept: string
+  kind: ExpenseKind
+  vendor: string
+  projectId: string | null
+  /** Lo ESPERADO por período, en `currency`. Nunca lo pagado. */
+  amount: number
+  currency: Currency
+  frequency: MaintenanceFrequency
+  /** Día del mes en que vence cada período. Tope 28: existe en todo mes. */
+  dueDay: number
+  /**
+   * Arranque del primer período. Todo el calendario sale de acá y de la
+   * frecuencia, nunca del último pago: pagar tarde no corre el vencimiento,
+   * y un período impago se queda vencido hasta que alguien lo pague.
+   */
+  startedOn: string // ISO
+  endedOn: string | null // ISO
+  notes: string
+}
+
+/**
  * Money moving. Each amount is in its own account's currency, so a
  * currency exchange is just a movement between accounts of different
  * currencies — the rate is implied by the two amounts.
  *
  * No origin = money came in from outside. No destination = it left.
+ *
+ * Los tres campos de gasto son null salvo en un movimiento
+ * `category === 'Gasto'` — lo impone la base, así que un 'Retiro' no puede
+ * llevar rubro y no se puede colar en el desglose. `fixedExpenseId` y
+ * `periodStart` van juntos o no van: un pago imputado a un plan siempre dice
+ * qué período salda, y no puede haber dos movimientos para el mismo par.
  */
 export interface MoneyMovement {
   id: string
@@ -202,6 +281,15 @@ export interface MoneyMovement {
   amountIn: number
   projectId: string | null
   notes: string
+  /** En qué se gastó. Null = todavía sin clasificar; se muestra, no se adivina. */
+  expenseKind: ExpenseKind | null
+  /** Qué gasto fijo salda este egreso. Null = gasto excepcional. */
+  fixedExpenseId: string | null
+  /**
+   * Qué período de ese gasto fijo salda, por su primer día. El pago DECLARA
+   * qué cubre; no se infiere de la fecha en que salió la plata.
+   */
+  periodStart: string | null
 }
 
 export interface ActivityEntry {

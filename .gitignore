@@ -16,3 +16,5 @@ node_modules
 .next/
 .DS_Store
 *.tsbuildinfo
+# Supabase CLI
+supabase/.temp/
