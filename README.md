@@ -129,35 +129,49 @@ es la única que puede firmar con la clave VAPID.
 si el push falla o se cae Internet, el guardado del usuario no se rompe. Un
 `dedupe_key` con la fecha adentro evita que un vencimiento avise cada minuto.
 
-### Puesta en marcha, en este orden
+### Puesta en marcha
+
+Todo sale de `.env.local`. Un solo comando:
 
 ```bash
-# 1. Generar el par de claves
-npx web-push generate-vapid-keys
+npm run push:setup
 ```
 
-2. La **pública** va a `.env.local` como `NEXT_PUBLIC_VAPID_PUBLIC_KEY` y a las
-   variables de entorno de Vercel. La **privada** nunca al repo.
+Genera lo que falte (el par VAPID y el `PUSH_TOKEN`), lo escribe en
+`.env.local`, carga los secretos en Supabase y deploya la Edge Function. Se
+puede correr las veces que haga falta: lo que ya existe no se regenera.
 
-3. Un token para que sólo la base pueda invocar la función:
-   `openssl rand -hex 32`
+Al terminar imprime las tres cosas que quedan a mano y no puede hacer solo:
 
-```bash
-# 4. Secretos y deploy de la función
-supabase secrets set VAPID_PUBLIC_KEY=...
-supabase secrets set VAPID_PRIVATE_KEY=...
-supabase secrets set VAPID_SUBJECT=mailto:tu@mail.com
-supabase secrets set PUSH_TOKEN=...
-supabase functions deploy enviar-push --no-verify-jwt
-```
+1. Correr `supabase/20_push.sql` en el SQL Editor, y después el `insert` en
+   `app_settings` que el script te deja armado con la URL y el token.
+2. Cargar `NEXT_PUBLIC_VAPID_PUBLIC_KEY` en Vercel y **redeployar** — esa
+   variable se compila adentro del bundle, así que un deploy viejo no la tiene
+   y la campana no va a poder activar nada.
+3. En cada celular, tocar la campana.
 
-> Va con `--no-verify-jwt` porque quien la llama es `pg_cron` desde la base, que
-> no tiene JWT de usuario. La autorización propia es el `PUSH_TOKEN`.
+> Si no tenés la CLI de Supabase, el script lo detecta y te imprime los valores
+> para cargarlos desde el panel (*Edge Functions* → *Deploy a new function*, y
+> los secretos en *Settings* → *Edge Functions* → *Secrets*).
+>
+> La función va con `--no-verify-jwt` porque quien la llama es `pg_cron` desde
+> la base, que no tiene JWT de usuario. La autorización propia es el
+> `PUSH_TOKEN`.
 
-5. Correr `supabase/20_push.sql` y después los dos `insert` del paso 9 de ese
-   archivo, con la URL de la función y el token.
+`npm run push:keys` genera sólo las claves, sin tocar Supabase. Y
+`node scripts/push-setup.mjs --forzar-claves` regenera el par VAPID: si lo
+hacés, todos los celulares se tienen que volver a suscribir.
 
-6. Deploy de la app (push a `main`) y, en cada celular, tocar la campana.
+### Qué es secreto y qué no
+
+| Variable | Dónde vive |
+| --- | --- |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | pública — `.env.local` y Vercel |
+| `VAPID_PRIVATE_KEY` | secreta — `.env.local` y secretos de Supabase |
+| `PUSH_TOKEN` | secreto — `.env.local` y secretos de Supabase |
+
+Nada secreto lleva el prefijo `NEXT_PUBLIC_`: eso lo compilaría adentro del
+bundle, donde lo lee cualquiera que abra el navegador.
 
 ### El detalle de iOS
 

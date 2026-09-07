@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "push:setup": "node scripts/push-setup.mjs",
+    "push:keys": "node scripts/push-setup.mjs --solo-claves"
   },
   "dependencies": {
     "@base-ui/react": "^1.5.0",
