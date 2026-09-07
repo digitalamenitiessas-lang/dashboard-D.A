@@ -43,7 +43,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-svh items-center justify-center px-4 py-10">
+    <main className="flex min-h-svh items-center justify-center px-[calc(1rem+env(safe-area-inset-left))] py-[calc(2.5rem+env(safe-area-inset-top))]">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <span className="flex size-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">
