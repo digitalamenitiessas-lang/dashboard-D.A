@@ -4,6 +4,10 @@ import { Progress as ProgressPrimitive } from "@base-ui/react/progress"
 
 import { cn } from "@/lib/utils"
 
+// El grosor lo manda el h-* que pasa el llamador al Root (h-1.5, h-2, ...):
+// el Track lo hereda con h-full. Y el w-full del Root es obligatorio, porque
+// como hijo de un flex su base seria max-content y el ancho percentual del
+// Track resolveria a 0 (la barra desaparecia).
 function Progress({
   className,
   children,
@@ -14,7 +18,7 @@ function Progress({
     <ProgressPrimitive.Root
       value={value}
       data-slot="progress"
-      className={cn("flex flex-wrap gap-3", className)}
+      className={cn("flex w-full flex-wrap gap-3", className)}
       {...props}
     >
       {children}
@@ -29,7 +33,7 @@ function ProgressTrack({ className, ...props }: ProgressPrimitive.Track.Props) {
   return (
     <ProgressPrimitive.Track
       className={cn(
-        "relative flex h-1 w-full items-center overflow-x-hidden rounded-full bg-muted",
+        "relative flex h-full min-h-1 w-full items-center overflow-x-hidden rounded-full bg-foreground/15",
         className
       )}
       data-slot="progress-track"

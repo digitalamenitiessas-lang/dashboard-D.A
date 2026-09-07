@@ -24,11 +24,13 @@ export function ProjectTable({
   clientName: (id: string | null) => string
 }) {
   return (
-    <div className="glass overflow-x-auto rounded-2xl">
+    // El scroll horizontal lo da el contenedor de Table: acá sólo el recorte
+    // de las esquinas, para que la columna fija no se pegue al div equivocado.
+    <div className="glass overflow-hidden rounded-2xl">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Proyecto</TableHead>
+            <TableHead sticky>Proyecto</TableHead>
             <TableHead>Cliente</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Prioridad</TableHead>
@@ -44,7 +46,7 @@ export function ProjectTable({
             const fin = projectFinance(p, payments)
             return (
               <TableRow key={p.id}>
-                <TableCell>
+                <TableCell sticky>
                   <Link
                     href={`/proyectos/${p.id}`}
                     className="flex items-center gap-2 font-medium transition-colors hover:text-neon-green"

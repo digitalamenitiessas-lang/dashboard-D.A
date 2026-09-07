@@ -57,12 +57,12 @@ export function EditClientDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Editar cliente</DialogTitle>
           <DialogDescription>Actualizá los datos de contacto.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form id="ec-form" onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="ec-name">Nombre o razón social</FieldLabel>
@@ -80,7 +80,7 @@ export function EditClientDialog({
                 onChange={(e) => setContactPerson(e.target.value)}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ec-phone">Teléfono</FieldLabel>
                 <Input
@@ -109,15 +109,18 @@ export function EditClientDialog({
               />
             </Field>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar cambios'}
-            </Button>
-          </DialogFooter>
         </form>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <DialogFooter className="mt-6">
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="ec-form" disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

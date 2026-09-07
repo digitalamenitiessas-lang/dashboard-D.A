@@ -112,7 +112,7 @@ export default function AlertasPage() {
         <ToggleGroup
           value={[levelFilter]}
           onValueChange={(v) => setLevelFilter((v[0] as string) ?? 'todas')}
-          className="w-fit"
+          className="w-full overflow-x-auto lg:w-fit"
         >
           <ToggleGroupItem value="todas">Todas</ToggleGroupItem>
           <ToggleGroupItem value="critical">Críticas</ToggleGroupItem>
@@ -189,9 +189,11 @@ export default function AlertasPage() {
                         </span>
                       ) : null}
                       {a.projectId ? (
+                        // Único acceso al proyecto: el ícono sigue en 16px,
+                        // el área tocable pasa a 40.
                         <Link
                           href={`/proyectos/${a.projectId}`}
-                          className="text-muted-foreground transition-colors hover:text-neon-green"
+                          className="-m-2 inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-neon-green md:size-8"
                           aria-label="Ver proyecto"
                         >
                           <ArrowUpRight className="size-4" />
@@ -210,7 +212,7 @@ export default function AlertasPage() {
         <ul className="flex flex-col divide-y divide-white/5">
           {activity.slice(0, 15).map((a) => (
             <li key={a.id} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
-              <span className="rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+              <span className="shrink-0 rounded-md bg-white/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
                 {a.type}
               </span>
               {a.projectId ? (
@@ -223,7 +225,9 @@ export default function AlertasPage() {
               ) : (
                 <p className="min-w-0 flex-1 truncate text-sm">{a.message}</p>
               )}
-              <span className="shrink-0 text-xs text-muted-foreground">
+              {/* Mismo criterio que la lista de alertas de arriba: en el
+                  celular la fecha cede el ancho al mensaje. */}
+              <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
                 {formatDate(a.date)}
               </span>
             </li>

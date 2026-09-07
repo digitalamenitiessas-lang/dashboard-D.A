@@ -114,7 +114,7 @@ export default function MantenimientosPage() {
         </Button>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Ingreso mensual recurrente"
           value={formatMoneyByCurrency(mrr)}
@@ -219,7 +219,7 @@ export default function MantenimientosPage() {
                   </div>
 
                   {late ? (
-                    <div className="mt-2 flex items-center justify-between gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-3">
+                    <div className="mt-2 flex flex-col items-start gap-1 rounded-xl border border-destructive/30 bg-destructive/10 p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                       <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-red-300">
                         <TriangleAlert className="size-3.5 shrink-0" />
                         {overdue.length} período(s) sin cobrar
@@ -323,43 +323,49 @@ export default function MantenimientosPage() {
               {formatMoneyByCurrency(collectedTotal)}
             </span>
           </div>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Fecha</TableHead>
-                  <TableHead>Proyecto</TableHead>
-                  <TableHead className="text-right">Importe</TableHead>
-                  <TableHead>Medio</TableHead>
-                  <TableHead>Comprobante</TableHead>
+          {/* Sin div extra: el scroll horizontal lo da Table. */}
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Fecha</TableHead>
+                <TableHead>Proyecto</TableHead>
+                <TableHead className="text-right">Importe</TableHead>
+                <TableHead>Medio</TableHead>
+                <TableHead nowrap={false}>Comprobante</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {maintenanceCharges.map((charge) => (
+                <TableRow key={charge.id}>
+                  <TableCell className="tabular-nums">
+                    {formatDate(charge.chargedOn)}
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`/proyectos/${charge.projectId}`}
+                      className="transition-colors hover:text-neon-green"
+                    >
+                      {projectName(charge.projectId)}
+                    </Link>
+                  </TableCell>
+                  <TableCell className="text-right font-semibold tabular-nums">
+                    {formatMoney(charge.amount, charge.currency)}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {charge.method ?? '—'}
+                  </TableCell>
+                  {/* El comprobante es texto libre (links de Drive incluidos):
+                      wrappea en vez de estirar la tabla. */}
+                  <TableCell
+                    nowrap={false}
+                    className="max-w-56 break-words text-muted-foreground"
+                  >
+                    {charge.receipt ?? '—'}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {maintenanceCharges.map((charge) => (
-                  <TableRow key={charge.id}>
-                    <TableCell>{formatDate(charge.chargedOn)}</TableCell>
-                    <TableCell>
-                      <Link
-                        href={`/proyectos/${charge.projectId}`}
-                        className="transition-colors hover:text-neon-green"
-                      >
-                        {projectName(charge.projectId)}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-right font-semibold tabular-nums">
-                      {formatMoney(charge.amount, charge.currency)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {charge.method ?? '—'}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {charge.receipt ?? '—'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+              ))}
+            </TableBody>
+          </Table>
         </SectionCard>
       ) : null}
 

@@ -103,7 +103,7 @@ export function AddPaymentDialog({
           </Button>
         }
       />
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Registrar pago</DialogTitle>
           <DialogDescription>
@@ -132,7 +132,7 @@ export function AddPaymentDialog({
               placeholder="Ej: Anticipo 50%"
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="pay-amount">Monto</FieldLabel>
               <MoneyInput
@@ -151,7 +151,7 @@ export function AddPaymentDialog({
               />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="pay-paid">Fecha de pago</FieldLabel>
               <Input

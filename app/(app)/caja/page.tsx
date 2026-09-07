@@ -146,7 +146,7 @@ export default function CajaPage() {
         </div>
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Disponible"
           value={formatMoneyByCurrency(totalByCurrency(available))}
@@ -312,64 +312,136 @@ export default function CajaPage() {
                 </EmptyHeader>
               </Empty>
             ) : (
-              <div className="glass overflow-x-auto rounded-2xl">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Concepto</TableHead>
-                      <TableHead>Sale de</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                      <TableHead>Entra a</TableHead>
-                      <TableHead className="text-right">Monto</TableHead>
-                      <TableHead className="text-right">Acción</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {movements.map((m) => {
-                      const from = accounts.find((a) => a.id === m.fromAccountId)
-                      const to = accounts.find((a) => a.id === m.toAccountId)
-                      return (
-                        <TableRow key={m.id}>
-                          <TableCell>{formatDate(m.movedOn)}</TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {m.category}
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {m.concept || '—'}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {accountName(m.fromAccountId)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums text-red-300">
-                            {from ? `−${formatMoney(m.amountOut, from.currency)}` : '—'}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
+              // Un solo scroller: el de Table. Acá sólo el recorte de las
+              // esquinas, así la columna fija se pega al scroller correcto.
+              <div className="glass overflow-hidden rounded-2xl">
+                {/* Abajo de md, lista en vez de tabla: son 8 columnas y
+                    ~940px de ancho mínimo contra 343px de pantalla. */}
+                <ul className="divide-y divide-white/5 p-4 md:hidden">
+                  {movements.map((m) => {
+                    const from = accounts.find((a) => a.id === m.fromAccountId)
+                    const to = accounts.find((a) => a.id === m.toAccountId)
+                    return (
+                      <li
+                        key={m.id}
+                        className="flex items-start justify-between gap-3 py-3 first:pt-0 last:pb-0"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium break-words">
+                            {m.concept || m.category}
+                          </p>
+                          <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                            {formatDate(m.movedOn)}
+                            {/* Si no hay concepto el título ya es el tipo: no
+                                se repite acá. */}
+                            {m.concept ? ` · ${m.category}` : ''}
+                          </p>
+                          <p className="mt-0.5 text-xs break-words text-muted-foreground">
+                            {accountName(m.fromAccountId)} →{' '}
                             {accountName(m.toAccountId)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums text-neon-green">
-                            {to ? `+${formatMoney(m.amountIn, to.currency)}` : '—'}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex justify-end">
-                              <Button
-                                size="icon-sm"
-                                variant="ghost"
-                                aria-label={`Editar movimiento del ${m.movedOn}`}
-                                onClick={() =>
-                                  setMovementDialog({ open: true, movement: m })
-                                }
-                              >
-                                <Pencil />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )
-                    })}
-                  </TableBody>
-                </Table>
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          {from ? (
+                            <span className="text-sm font-semibold tabular-nums text-red-300">
+                              −{formatMoney(m.amountOut, from.currency)}
+                            </span>
+                          ) : null}
+                          {to ? (
+                            <span className="text-sm font-semibold tabular-nums text-neon-green">
+                              +{formatMoney(m.amountIn, to.currency)}
+                            </span>
+                          ) : null}
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            aria-label={`Editar movimiento del ${m.movedOn}`}
+                            onClick={() =>
+                              setMovementDialog({ open: true, movement: m })
+                            }
+                          >
+                            <Pencil />
+                          </Button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead sticky>Fecha</TableHead>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead nowrap={false}>Concepto</TableHead>
+                        <TableHead>Sale de</TableHead>
+                        {/* Las dos columnas de monto decían "Monto": al llegar
+                            scrolleando a la segunda no se sabía cuál era cuál. */}
+                        <TableHead className="text-right">Sale</TableHead>
+                        <TableHead>Entra a</TableHead>
+                        <TableHead className="text-right">Entra</TableHead>
+                        <TableHead className="text-right">Acción</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {movements.map((m) => {
+                        const from = accounts.find(
+                          (a) => a.id === m.fromAccountId,
+                        )
+                        const to = accounts.find((a) => a.id === m.toAccountId)
+                        return (
+                          <TableRow key={m.id}>
+                            <TableCell sticky className="tabular-nums">
+                              {formatDate(m.movedOn)}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {m.category}
+                            </TableCell>
+                            <TableCell
+                              nowrap={false}
+                              className="min-w-40 max-w-56 break-words font-medium"
+                            >
+                              {m.concept || '—'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {accountName(m.fromAccountId)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-red-300">
+                              {from
+                                ? `−${formatMoney(m.amountOut, from.currency)}`
+                                : '—'}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {accountName(m.toAccountId)}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-neon-green">
+                              {to
+                                ? `+${formatMoney(m.amountIn, to.currency)}`
+                                : '—'}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex justify-end">
+                                <Button
+                                  size="icon-sm"
+                                  variant="ghost"
+                                  aria-label={`Editar movimiento del ${m.movedOn}`}
+                                  onClick={() =>
+                                    setMovementDialog({
+                                      open: true,
+                                      movement: m,
+                                    })
+                                  }
+                                >
+                                  <Pencil />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
               </div>
             )}
           </TabsContent>
@@ -399,24 +471,32 @@ export default function CajaPage() {
                   </EmptyHeader>
                 </Empty>
               ) : (
-                <div className="glass overflow-x-auto rounded-2xl">
+                <div className="glass overflow-hidden rounded-2xl">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Fecha</TableHead>
-                        <TableHead>Concepto</TableHead>
-                        <TableHead>Detalle</TableHead>
+                        <TableHead sticky>Fecha</TableHead>
+                        <TableHead nowrap={false}>Concepto</TableHead>
+                        <TableHead nowrap={false}>Detalle</TableHead>
                         <TableHead className="text-right">Monto</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {ledger.map((entry) => (
                         <TableRow key={entry.id}>
-                          <TableCell>{formatDate(entry.date)}</TableCell>
-                          <TableCell className="font-medium">
+                          <TableCell sticky className="tabular-nums">
+                            {formatDate(entry.date)}
+                          </TableCell>
+                          <TableCell
+                            nowrap={false}
+                            className="min-w-40 max-w-56 break-words font-medium"
+                          >
                             {entry.concept}
                           </TableCell>
-                          <TableCell className="text-muted-foreground">
+                          <TableCell
+                            nowrap={false}
+                            className="max-w-56 break-words text-muted-foreground"
+                          >
                             {entry.detail}
                           </TableCell>
                           <TableCell

@@ -97,14 +97,17 @@ export function EditPaymentDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Editar pago</DialogTitle>
             <DialogDescription>
               Corregí el concepto, el importe o la fecha en que se cobró.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit}>
+          {/* El footer va FUERA del <form> para que sea hijo directo del
+              DialogContent y quede clavado abajo del marco, arriba del
+              teclado. El submit se mantiene con el par id/form del botón. */}
+          <form id="epay-form" onSubmit={handleSubmit}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="epay-concept">Concepto</FieldLabel>
@@ -114,7 +117,7 @@ export function EditPaymentDialog({
                   onChange={(e) => setConcept(e.target.value)}
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="epay-amount">Monto</FieldLabel>
                   <MoneyInput
@@ -133,7 +136,7 @@ export function EditPaymentDialog({
                   />
                 </Field>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="epay-paid">Fecha de pago</FieldLabel>
                   <Input
@@ -187,29 +190,39 @@ export function EditPaymentDialog({
                 />
               </Field>
             </FieldGroup>
-            <DialogFooter className="mt-6 sm:justify-between">
+          </form>
+          {/* `flex-col` (no el `flex-col-reverse` de la base) para que en el
+              celular se respete el orden del DOM: Eliminar arriba y Guardar
+              al pie, que es donde cae el pulgar. */}
+          <DialogFooter className="mt-6 flex-col sm:flex-row sm:justify-between">
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={saving}
+              onClick={() => setConfirmingDelete(true)}
+              className="mt-4 sm:mt-0"
+            >
+              Eliminar
+            </Button>
+            <div className="flex w-full items-center gap-2 sm:w-auto">
               <Button
                 type="button"
-                variant="destructive"
-                disabled={saving}
-                onClick={() => setConfirmingDelete(true)}
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 sm:flex-none"
               >
-                Eliminar
+                Cancelar
               </Button>
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => onOpenChange(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving || !valid}>
-                  {saving ? 'Guardando...' : 'Guardar'}
-                </Button>
-              </div>
-            </DialogFooter>
-          </form>
+              <Button
+                type="submit"
+                form="epay-form"
+                disabled={saving || !valid}
+                className="flex-1 sm:flex-none"
+              >
+                {saving ? 'Guardando...' : 'Guardar'}
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

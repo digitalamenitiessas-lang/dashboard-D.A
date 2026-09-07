@@ -116,7 +116,7 @@ export function AccountDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar cuenta' : 'Nueva cuenta'}</DialogTitle>
             <DialogDescription>
@@ -124,7 +124,10 @@ export function AccountDialog({
               se calcula solo, no se carga.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={submit}>
+          {/* El footer va FUERA del <form> para que sea hijo directo del
+              DialogContent y quede clavado abajo del marco, arriba del
+              teclado. El submit se mantiene con el par id/form del botón. */}
+          <form id="acc-form" onSubmit={submit}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="acc-name">Nombre</FieldLabel>
@@ -135,7 +138,7 @@ export function AccountDialog({
                   placeholder="Ej: Banco Galicia / Caja USD"
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="acc-kind">Tipo</FieldLabel>
                   <SimpleSelect
@@ -206,34 +209,47 @@ export function AccountDialog({
                 </div>
               ) : null}
             </FieldGroup>
-
-            <DialogFooter className="mt-6 sm:justify-between">
-              {editing ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={saving}
-                  onClick={() => setConfirmingDelete(true)}
-                >
-                  Eliminar
-                </Button>
-              ) : (
-                <span />
-              )}
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => onOpenChange(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving || !valid}>
-                  {saving ? 'Guardando...' : editing ? 'Guardar' : 'Crear'}
-                </Button>
-              </div>
-            </DialogFooter>
           </form>
+
+          {/* `flex-col` (no el `flex-col-reverse` de la base) para que en el
+              celular se respete el orden del DOM: Eliminar arriba y Guardar
+              al pie, que es donde cae el pulgar. Sin cuenta que borrar no hay
+              nada que separar, así que el grupo vuelve a la derecha. */}
+          <DialogFooter
+            className={`mt-6 flex-col sm:flex-row ${
+              editing ? 'sm:justify-between' : ''
+            }`}
+          >
+            {editing ? (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={saving}
+                onClick={() => setConfirmingDelete(true)}
+                className="mt-4 sm:mt-0"
+              >
+                Eliminar
+              </Button>
+            ) : null}
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 sm:flex-none"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                form="acc-form"
+                disabled={saving || !valid}
+                className="flex-1 sm:flex-none"
+              >
+                {saving ? 'Guardando...' : editing ? 'Guardar' : 'Crear'}
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

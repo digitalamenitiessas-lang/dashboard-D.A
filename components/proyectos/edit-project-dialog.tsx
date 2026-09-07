@@ -84,14 +84,14 @@ export function EditProjectDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Editar proyecto</DialogTitle>
           <DialogDescription>
             Modificá los datos comerciales y de seguimiento.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form id="ep-form" onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="ep-name">Nombre</FieldLabel>
@@ -110,7 +110,7 @@ export function EditProjectDialog({
                 rows={3}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ep-type">Tipo</FieldLabel>
                 <SimpleSelect
@@ -137,7 +137,7 @@ export function EditProjectDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ep-status">Estado</FieldLabel>
                 <SimpleSelect
@@ -157,7 +157,7 @@ export function EditProjectDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ep-contact">Persona de contacto</FieldLabel>
                 <Input
@@ -175,7 +175,7 @@ export function EditProjectDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ep-start">Fecha de inicio</FieldLabel>
                 <Input
@@ -195,7 +195,7 @@ export function EditProjectDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ep-impl">Fecha de implementación</FieldLabel>
                 <Input
@@ -224,15 +224,18 @@ export function EditProjectDialog({
               />
             </Field>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar cambios'}
-            </Button>
-          </DialogFooter>
         </form>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <DialogFooter className="mt-6">
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="ep-form" disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

@@ -113,14 +113,17 @@ export function NewProjectDialog({
           Nuevo proyecto
         </DialogTrigger>
       )}
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Nuevo proyecto</DialogTitle>
           <DialogDescription>
             Registrá un nuevo proyecto en el centro de control.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <form id="np-form" onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="np-name">Nombre</FieldLabel>
@@ -141,7 +144,7 @@ export function NewProjectDialog({
                 rows={2}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="np-type">Tipo</FieldLabel>
                 <SimpleSelect
@@ -165,7 +168,7 @@ export function NewProjectDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="np-status">Estado</FieldLabel>
                 <SimpleSelect
@@ -194,7 +197,7 @@ export function NewProjectDialog({
                 placeholder="Ej: Sofía Ramírez"
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="np-start">Fecha de inicio</FieldLabel>
                 <Input
@@ -214,7 +217,7 @@ export function NewProjectDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="np-quoted">Importe cotizado</FieldLabel>
                 <MoneyInput
@@ -235,15 +238,15 @@ export function NewProjectDialog({
               </Field>
             </div>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <DialogClose render={<Button type="button" variant="ghost" />}>
-              Cancelar
-            </DialogClose>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Creando...' : 'Crear proyecto'}
-            </Button>
-          </DialogFooter>
         </form>
+        <DialogFooter className="mt-6">
+          <DialogClose render={<Button type="button" variant="ghost" />}>
+            Cancelar
+          </DialogClose>
+          <Button type="submit" form="np-form" disabled={saving}>
+            {saving ? 'Creando...' : 'Crear proyecto'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

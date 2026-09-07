@@ -22,7 +22,9 @@ export function LinkedText({
   const parts = text.split(URL_PATTERN)
 
   return (
-    <span className={className}>
+    // Una URL pegada es un token sin espacios: sin break-words se sale de la
+    // tarjeta y saca de eje al documento entero.
+    <span className={cn('break-words', className)}>
       {parts.map((part, i) =>
         // Odd indexes are the captured URLs.
         i % 2 === 1 ? (
@@ -32,7 +34,7 @@ export function LinkedText({
             target="_blank"
             rel="noreferrer noopener"
             className={cn(
-              'font-medium text-neon-blue underline decoration-neon-blue/40',
+              'font-medium break-words text-neon-blue underline decoration-neon-blue/40',
               'underline-offset-2 transition-colors hover:text-neon-green',
               'hover:decoration-neon-green/40',
             )}

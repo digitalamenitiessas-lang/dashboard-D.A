@@ -132,6 +132,66 @@
   }
 }
 
+/* ── Áreas seguras (la muesca, la Isla Dinámica, la barra de gestos) ──────
+ *
+ * La app corre instalada con `viewportFit: 'cover'` y la barra de estado
+ * translúcida (ver app/layout.tsx), así que el iPhone dibuja la hora, la Isla
+ * Dinámica y la barra de gestos ENCIMA del layout. Estas utilidades
+ * centralizan los `env(safe-area-inset-*)` para no repetir el mismo calc() a
+ * mano en cada archivo: así se aplican los cuatro lados y no queda uno
+ * afuera, que es justo lo que venía pasando.
+ *
+ * El fallback `0px` no es decorativo: sin él, un navegador sin insets
+ * invalida el calc() entero y el padding se pierde.
+ */
+
+/* Padding lateral de un contenedor a ancho completo: 1rem de aire, o la
+ * muesca si es más grande (sólo pasa con el iPhone apaisado). Para el
+ * <main> del shell, el login y cualquier barra que llegue al borde. */
+@utility safe-x {
+  padding-left: max(1rem, env(safe-area-inset-left, 0px));
+  padding-right: max(1rem, env(safe-area-inset-right, 0px));
+}
+
+/* Igual que safe-x pero con el aire de escritorio (2rem). Pensada para
+ * usarse con variante: `safe-x lg:safe-x-lg`. */
+@utility safe-x-lg {
+  padding-left: max(2rem, env(safe-area-inset-left, 0px));
+  padding-right: max(2rem, env(safe-area-inset-right, 0px));
+}
+
+/* Padding de abajo para lo que apoya en el borde inferior: 1rem, o la barra
+ * de gestos si es más alta. */
+@utility safe-pb {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+}
+
+/* Marco de un panel flotante centrado sobre la pantalla (hoy: el Popup de
+ * components/ui/dialog.tsx). Hace dos cosas:
+ *
+ * 1. El tope de alto descuenta las DOS áreas seguras más 1rem de aire
+ *    arriba y abajo. Va en `dvh`, no en `svh`: junto con el
+ *    `interactiveWidget: 'resizes-content'` de app/layout.tsx, eso vale lo
+ *    que realmente se ve, así que cuando aparece el teclado del celular el
+ *    marco se achica en vez de quedar la mitad abajo del teclado.
+ * 2. Corre el centro la mitad de la diferencia entre la inset de arriba y la
+ *    de abajo. La de arriba es la más grande (59px en un iPhone 14 contra
+ *    34px de la barra de gestos), así que sin esto un diálogo que llega al
+ *    tope arranca con el título abajo de la Isla Dinámica.
+ *
+ * Se usa junto con `left-1/2 -translate-x-1/2 -translate-y-1/2`; el `top` lo
+ * pone esta utilidad, no hace falta `top-1/2`.
+ */
+@utility safe-dialog-frame {
+  top: calc(
+    50% + (env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) / 2
+  );
+  max-height: calc(
+    100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) -
+      2rem
+  );
+}
+
 @utility glass {
   background-color: oklch(0.22 0.008 265 / 55%);
   backdrop-filter: blur(14px);

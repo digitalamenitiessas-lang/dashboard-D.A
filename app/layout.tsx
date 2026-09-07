@@ -34,10 +34,20 @@ export const viewport: Viewport = {
   // Instalada en el iPhone, la barra de estado se dibuja ENCIMA del
   // contenido (statusBarStyle 'black-translucent'). Sin esto el layout se
   // queda en el rectángulo seguro y el fondo del header no llega al borde;
-  // con esto ocupa toda la pantalla, y los `env(safe-area-inset-*)` de
-  // globals.css se encargan de que nada quede tapado por la hora ni por la
-  // barra de gestos.
+  // con esto ocupa toda la pantalla, y lo que evita que algo quede tapado
+  // por la hora, por la Isla Dinámica o por la barra de gestos son las
+  // utilidades `safe-*` de app/globals.css (safe-x, safe-x-lg, safe-pb,
+  // safe-dialog-frame) más los `env(safe-area-inset-*)` sueltos que todavía
+  // quedan en components/layout/app-shell.tsx y en app/login/page.tsx.
   viewportFit: 'cover',
+  // El teclado del celular no puede tapar el botón de guardar. Con el
+  // default de Next ('resizes-visual') el viewport de LAYOUT no se achica al
+  // abrirse el teclado: `100dvh` sigue valiendo la pantalla completa y la
+  // mitad de abajo de cualquier diálogo centrado queda detrás del teclado.
+  // Con 'resizes-content' el layout se encoge de verdad, así que el
+  // `safe-dialog-frame` de globals.css y el footer fijo de
+  // components/ui/dialog.tsx miden lo que realmente se ve.
+  interactiveWidget: 'resizes-content',
 }
 
 export default function RootLayout({

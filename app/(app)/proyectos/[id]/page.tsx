@@ -142,7 +142,9 @@ export default function ProjectDetailPage() {
             <h1 className="font-display text-2xl font-extrabold tracking-tight text-balance">
               {project.name}
             </h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground text-pretty">
+            {/* break-words: text-pretty elige dónde cortar entre palabras,
+                pero nunca parte una URL pegada en la descripción. */}
+            <p className="mt-1 max-w-2xl text-sm break-words text-muted-foreground text-pretty">
               <LinkedText text={project.description} />
             </p>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -179,8 +181,12 @@ export default function ProjectDetailPage() {
           </div>
 
           <div className="flex shrink-0 flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Cambiar estado</span>
+            {/* En el celular la etiqueta quedaba a 200px del botón que dice
+                otra cosa: se leía como el título de «Editar proyecto». */}
+            <div className="flex items-center justify-end gap-2 lg:justify-between">
+              <span className="hidden text-xs text-muted-foreground lg:inline">
+                Cambiar estado
+              </span>
               <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
                 <Pencil data-icon="inline-start" />
                 Editar proyecto
@@ -198,7 +204,7 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Presupuestado"
           value={formatMoney(fin.quoted, project.currency)}
@@ -227,13 +233,28 @@ export default function ProjectDetailPage() {
       </div>
 
       <Tabs defaultValue="resumen">
-        <TabsList className="w-full justify-start overflow-x-auto">
-          <TabsTrigger value="resumen">Resumen</TabsTrigger>
-          <TabsTrigger value="desarrollo">Desarrollo</TabsTrigger>
-          <TabsTrigger value="cobros">Cobros</TabsTrigger>
-          <TabsTrigger value="infraestructura">Infraestructura</TabsTrigger>
-          <TabsTrigger value="mantenimiento">Mantenimiento</TabsTrigger>
-          <TabsTrigger value="actividad">Notas y actividad</TabsTrigger>
+        {/* Seis pestañas son 577px contra 343px de pantalla: el scroll sangra
+            hasta el borde para que se vea que hay más a la derecha, y dos
+            etiquetas se acortan para bajar el total. */}
+        <TabsList className="-mx-4 w-[calc(100%+2rem)] justify-start overflow-x-auto px-4 group-data-horizontal/tabs:h-10 lg:mx-0 lg:w-full lg:px-0">
+          <TabsTrigger value="resumen" className="flex-none">
+            Resumen
+          </TabsTrigger>
+          <TabsTrigger value="desarrollo" className="flex-none">
+            Desarrollo
+          </TabsTrigger>
+          <TabsTrigger value="cobros" className="flex-none">
+            Cobros
+          </TabsTrigger>
+          <TabsTrigger value="infraestructura" className="flex-none">
+            Infra
+          </TabsTrigger>
+          <TabsTrigger value="mantenimiento" className="flex-none">
+            Mantenimiento
+          </TabsTrigger>
+          <TabsTrigger value="actividad" className="flex-none">
+            Notas
+          </TabsTrigger>
         </TabsList>
 
         {/* RESUMEN */}
@@ -382,49 +403,92 @@ export default function ProjectDetailPage() {
                 </Empty>
               </div>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Concepto</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Fecha de pago</TableHead>
-                    <TableHead>Medio</TableHead>
-                    <TableHead>Comprobante</TableHead>
-                    <TableHead className="text-right">Acción</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
+              <>
+                {/* Abajo de md, lista en vez de tabla: mismo patrón que el
+                    historial de mantenimientos de esta misma pantalla. La
+                    tabla son seis columnas y ~770px de ancho mínimo. */}
+                <ul className="divide-y divide-white/5 p-4 md:hidden">
                   {projectPayments.map((pay) => (
-                    <TableRow key={pay.id}>
-                      <TableCell className="font-medium">{pay.concept}</TableCell>
-                      <TableCell className="tabular-nums">
-                        {formatMoney(pay.amount, pay.currency)}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {formatDate(pay.paidDate)}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {pay.method ?? '—'}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {pay.receipt ?? '—'}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label={`Editar pago: ${pay.concept}`}
-                            onClick={() => setEditPayTarget(pay)}
-                          >
-                            <Pencil />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    <li
+                      key={pay.id}
+                      className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {pay.concept}
+                        </p>
+                        <p className="text-xs text-muted-foreground tabular-nums">
+                          {formatDate(pay.paidDate)}
+                          {pay.method ? ` · ${pay.method}` : ''}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-sm font-semibold tabular-nums">
+                          {formatMoney(pay.amount, pay.currency)}
+                        </span>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Editar pago: ${pay.concept}`}
+                          onClick={() => setEditPayTarget(pay)}
+                        >
+                          <Pencil />
+                        </Button>
+                      </div>
+                    </li>
                   ))}
-                </TableBody>
-              </Table>
+                </ul>
+                <div className="hidden md:block">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Concepto</TableHead>
+                        <TableHead>Monto</TableHead>
+                        <TableHead>Fecha de pago</TableHead>
+                        <TableHead>Medio</TableHead>
+                        <TableHead nowrap={false}>Comprobante</TableHead>
+                        <TableHead className="text-right">Acción</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {projectPayments.map((pay) => (
+                        <TableRow key={pay.id}>
+                          <TableCell nowrap={false} className="min-w-40 font-medium">
+                            {pay.concept}
+                          </TableCell>
+                          <TableCell className="tabular-nums">
+                            {formatMoney(pay.amount, pay.currency)}
+                          </TableCell>
+                          <TableCell className="tabular-nums text-muted-foreground">
+                            {formatDate(pay.paidDate)}
+                          </TableCell>
+                          <TableCell className="text-muted-foreground">
+                            {pay.method ?? '—'}
+                          </TableCell>
+                          <TableCell
+                            nowrap={false}
+                            className="max-w-56 break-words text-muted-foreground"
+                          >
+                            {pay.receipt ?? '—'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={`Editar pago: ${pay.concept}`}
+                                onClick={() => setEditPayTarget(pay)}
+                              >
+                                <Pencil />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </>
             )}
           </div>
         </TabsContent>
@@ -700,14 +764,18 @@ function LinkOrDash({
   // resolve relative to the current route.
   const href = /^https?:\/\//.test(url) ? url : `https://${url}`
   return (
+    // El texto va en su propio span con min-w-0: como flex item, su
+    // min-width:auto era la URL entera sin cortar y sacaba de eje a la página.
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="inline-flex items-center gap-1.5 text-neon-blue hover:underline"
+      className="inline-flex max-w-full items-center gap-1.5 text-neon-blue hover:underline"
     >
-      {label ?? url.replace(/^https?:\/\//, '')}
-      <Icon className="size-3.5" />
+      <span className="min-w-0 break-all">
+        {label ?? url.replace(/^https?:\/\//, '')}
+      </span>
+      <Icon className="size-3.5 shrink-0" />
     </a>
   )
 }

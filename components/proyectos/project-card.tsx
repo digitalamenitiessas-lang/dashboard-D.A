@@ -45,7 +45,7 @@ export function ProjectCard({
       </div>
 
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <span className="truncate">{clientName}</span>
+        <span className="min-w-0 truncate">{clientName}</span>
         <span className="text-white/20">·</span>
         <PriorityChip priority={project.priority} />
       </div>

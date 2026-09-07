@@ -68,14 +68,14 @@ export function EditNoteDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Editar nota</DialogTitle>
           <DialogDescription>
             Actualizá el contenido, la categoría o el recordatorio.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form id="en-form" onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="en-project">Proyecto (opcional)</FieldLabel>
@@ -107,7 +107,7 @@ export function EditNoteDialog({
                 rows={4}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="en-category">Categoría</FieldLabel>
                 <SimpleSelect
@@ -135,7 +135,7 @@ export function EditNoteDialog({
                 onChange={(e) => setAuthor(e.target.value)}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="en-tags">Etiquetas</FieldLabel>
                 <Input
@@ -156,15 +156,18 @@ export function EditNoteDialog({
               </Field>
             </div>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar cambios'}
-            </Button>
-          </DialogFooter>
         </form>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <DialogFooter className="mt-6">
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="en-form" disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

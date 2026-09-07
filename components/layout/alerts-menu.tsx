@@ -34,11 +34,14 @@ export function AlertsMenu() {
         {alerts.length > 0 ? (
           <span
             className={cn(
-              'absolute -right-0.5 -top-0.5 flex size-4 items-center justify-center rounded-full text-[10px] font-semibold text-background',
+              // `h-4 min-w-4 w-auto px-1` en vez de `size-4`: con diez alertas
+              // o más el número se salía del círculo fijo de 16px. Y el texto
+              // se topea en '9+' para que el badge no crezca sin control.
+              'absolute -right-0.5 -top-0.5 flex h-4 w-auto min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold tabular-nums text-background',
               criticalCount > 0 ? 'bg-red-400' : 'bg-neon-green',
             )}
           >
-            {alerts.length}
+            {alerts.length > 9 ? '9+' : alerts.length}
           </span>
         ) : null}
       </PopoverTrigger>

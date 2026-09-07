@@ -157,7 +157,7 @@ export default function CobrosPage() {
         <AddPaymentDialog open={addOpen} onOpenChange={setAddOpen} />
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Total cotizado"
           value={formatMoneyByCurrency(totalQuoted)}
@@ -236,16 +236,18 @@ export default function CobrosPage() {
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className="glass overflow-x-auto rounded-2xl">
+        // El scroll horizontal ya lo trae el contenedor de Table: acá sólo
+        // queda el recorte de las esquinas.
+        <div className="glass overflow-hidden rounded-2xl">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Concepto</TableHead>
+                <TableHead nowrap={false}>Concepto</TableHead>
                 <TableHead>Proyecto</TableHead>
                 <TableHead className="text-right">Monto</TableHead>
                 <TableHead>Fecha de pago</TableHead>
                 <TableHead>Medio</TableHead>
-                <TableHead>Comprobante</TableHead>
+                <TableHead nowrap={false}>Comprobante</TableHead>
                 <TableHead className="text-right">Acción</TableHead>
               </TableRow>
             </TableHeader>
@@ -254,8 +256,10 @@ export default function CobrosPage() {
                 const payment = row.payment
                 return (
                   <TableRow key={row.id}>
-                    <TableCell className="font-medium">
-                      <span className="flex items-center gap-2">
+                    {/* Concepto y Comprobante son texto libre: sin dejarlos
+                        wrappear estiraban la tabla sin techo. */}
+                    <TableCell nowrap={false} className="min-w-40 font-medium">
+                      <span className="flex flex-wrap items-center gap-2">
                         {row.concept}
                         {row.kind === 'maintenance' ? (
                           <span className="inline-flex items-center gap-1 rounded-md border border-neon-violet/25 bg-neon-violet/10 px-1.5 py-0.5 text-[10px] font-medium text-neon-violet">
@@ -276,11 +280,16 @@ export default function CobrosPage() {
                     <TableCell className="text-right font-semibold tabular-nums">
                       {formatMoney(row.amount, row.currency)}
                     </TableCell>
-                    <TableCell>{formatDate(row.paidDate)}</TableCell>
+                    <TableCell className="tabular-nums">
+                      {formatDate(row.paidDate)}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">
                       {row.method ?? '—'}
                     </TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell
+                      nowrap={false}
+                      className="max-w-56 break-words text-muted-foreground"
+                    >
                       {row.receipt ?? '—'}
                     </TableCell>
                     <TableCell>

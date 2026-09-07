@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Link from 'next/link'
-import { Menu, Search } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Sheet,
@@ -55,6 +55,12 @@ export function AppShell({
         </div>
         <div className="flex-1 overflow-y-auto px-3 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <SidebarNav />
+          {/* Los avisos son una preferencia de ESTE dispositivo, no una
+              alerta: vive acá abajo, con su etiqueta, y no al lado de la
+              campana de alertas del header. */}
+          <div className="mt-4 border-t border-white/5 pt-3">
+            <PushToggle />
+          </div>
         </div>
       </aside>
 
@@ -77,8 +83,13 @@ export function AppShell({
             >
               <Menu />
             </SheetTrigger>
+            {/* Sin la X: el Popup arranca en y=0 y la X caía debajo del
+                reloj del iPhone (el inset de arriba son 47-59px), donde
+                además el toque dispara el scroll-to-top de iOS. El menú
+                se cierra tocando el fondo y al navegar (onNavigate). */}
             <SheetContent
               side="left"
+              showCloseButton={false}
               className="w-72 overflow-y-auto border-white/10 bg-background/95 p-0 pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)] backdrop-blur-xl"
             >
               <SheetTitle className="sr-only">Navegación</SheetTitle>
@@ -87,25 +98,25 @@ export function AppShell({
               </div>
               <div className="px-3 py-4">
                 <SidebarNav onNavigate={() => setMobileOpen(false)} />
+                <div className="mt-4 border-t border-white/5 pt-3">
+                  <PushToggle />
+                </div>
               </div>
             </SheetContent>
           </Sheet>
 
-          <div className="hidden items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-muted-foreground sm:flex">
-            <Search className="size-4" />
-            <span>Buscar proyectos, clientes...</span>
-          </div>
-
           <div className="ml-auto flex items-center gap-2">
-            <PushToggle />
             <AlertsMenu />
             <UserMenu email={userEmail} />
           </div>
         </header>
 
         {/* Abajo, la barra de gestos del iPhone se come lo último de la
-            pantalla si el contenido llega hasta el borde. */}
-        <main className="mx-auto w-full max-w-7xl flex-1 px-4 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] lg:px-8 lg:pt-8 lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
+            pantalla si el contenido llega hasta el borde. Y a los costados
+            va lo mismo que el header: con el teléfono acostado la muesca
+            se comía el borde izquierdo de las tarjetas y la primera
+            columna de las tablas, mientras el header sí se corría. */}
+        <main className="mx-auto w-full max-w-7xl flex-1 pt-6 pl-[calc(1rem+env(safe-area-inset-left))] pr-[calc(1rem+env(safe-area-inset-right))] pb-[calc(1.5rem+env(safe-area-inset-bottom))] lg:pt-8 lg:pl-[calc(2rem+env(safe-area-inset-left))] lg:pr-[calc(2rem+env(safe-area-inset-right))] lg:pb-[calc(2rem+env(safe-area-inset-bottom))]">
           <StoreGate>{children}</StoreGate>
         </main>
       </div>

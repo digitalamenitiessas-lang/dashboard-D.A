@@ -192,11 +192,15 @@ export function FixedCostsCard({ project }: { project: Project }) {
                 <span className="text-sm font-medium tabular-nums">
                   {formatMoney(plan.amount, plan.currency)}
                 </span>
+                {/* Se esconde por PUNTERO, no por ancho: en un celular no hay
+                    hover y `focus-visible` no dispara con un toque, así que
+                    con `opacity-0` pelado el botón quedaba invisible pero
+                    clickeable — o no podías borrar, o borrabas sin querer. */}
                 <Button
-                  size="icon-xs"
+                  size="icon-sm"
                   variant="ghost"
                   aria-label={`Eliminar costo fijo: ${plan.concept}`}
-                  className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                  className="-mr-1 shrink-0 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100"
                   onClick={() => void remove(plan)}
                 >
                   <Trash2 />
@@ -217,18 +221,25 @@ export function FixedCostsCard({ project }: { project: Project }) {
       ) : null}
 
       <form onSubmit={submit} className="flex flex-col gap-2 pt-3">
+        {/* El par completo `h-9 md:h-8`: 36px con el dedo (a tono con los
+            SimpleSelect `sm`) y los 32px de siempre en desktop. Con `h-8`
+            pelado twMerge se comía el escalón táctil del primitivo. */}
         <Input
           value={concept}
           onChange={(e) => setConcept(e.target.value)}
           placeholder="Concepto (ej: Hosting Vercel)"
-          className="h-8"
+          className="h-9 md:h-8"
         />
-        <div className="flex items-center gap-2">
+        {/* `flex-wrap`: en 375px el importe y la moneda se llevan casi todo el
+            ancho de la card y a la frecuencia le quedaban 19px de texto, o sea
+            'Me…'. Ahora se baja a un renglón propio y desde sm entra todo en
+            una sola fila como antes. */}
+        <div className="flex flex-wrap items-center gap-2">
           <MoneyInput
             value={amount}
             onValueChange={setAmount}
             placeholder="0"
-            className="h-8 w-24 tabular-nums"
+            className="h-9 w-24 shrink-0 tabular-nums md:h-8"
             aria-label="Importe"
           />
           <SimpleSelect
@@ -236,13 +247,14 @@ export function FixedCostsCard({ project }: { project: Project }) {
             onValueChange={(v) => setCurrency(v as Currency)}
             options={toOptions(['USD', 'ARS', 'EUR'] as const)}
             size="sm"
-            className="w-24"
+            className="w-24 shrink-0"
           />
           <SimpleSelect
             value={frequency}
             onValueChange={(v) => setFrequency(v as MaintenanceFrequency)}
             options={toOptions(MAINTENANCE_FREQUENCIES)}
             size="sm"
+            className="min-w-32 flex-1"
           />
         </div>
         <div className="flex items-center gap-2">

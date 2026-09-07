@@ -8,7 +8,9 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      // overscroll-x-contain: arrastrar la tabla al costado en iOS no dispara
+      // el gesto de "volver atras" del navegador.
+      className="relative w-full overflow-x-auto overscroll-x-contain"
     >
       <table
         data-slot="table"
@@ -65,12 +67,35 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
   )
 }
 
-function TableHead({ className, ...props }: React.ComponentProps<"th">) {
+// Fondo opaco para las celdas fijas: la card es `glass` (translucida), asi que
+// sin esto el contenido que scrollea por debajo se ve a traves de la columna.
+const stickyCell = "sticky left-0 bg-[oklch(0.22_0.008_265)]"
+
+/**
+ * `nowrap` viene en true para no cambiar ninguna tabla existente, pero se puede
+ * apagar celda por celda (o columna por columna) cuando el texto es largo y
+ * conviene que baje de renglon en vez de estirar la tabla sin techo.
+ * `sticky` fija la celda a la izquierda: usalo en la primera columna, en el
+ * TableHead y en el TableCell de la misma columna.
+ */
+type TableCellExtras = {
+  nowrap?: boolean
+  sticky?: boolean
+}
+
+function TableHead({
+  className,
+  nowrap = true,
+  sticky = false,
+  ...props
+}: React.ComponentProps<"th"> & TableCellExtras) {
   return (
     <th
       data-slot="table-head"
       className={cn(
-        "h-10 px-2 text-left align-middle font-medium whitespace-nowrap text-foreground [&:has([role=checkbox])]:pr-0",
+        "h-10 px-2 text-left align-middle font-medium text-foreground [&:has([role=checkbox])]:pr-0",
+        nowrap && "whitespace-nowrap",
+        sticky && `${stickyCell} z-20`,
         className
       )}
       {...props}
@@ -78,12 +103,19 @@ function TableHead({ className, ...props }: React.ComponentProps<"th">) {
   )
 }
 
-function TableCell({ className, ...props }: React.ComponentProps<"td">) {
+function TableCell({
+  className,
+  nowrap = true,
+  sticky = false,
+  ...props
+}: React.ComponentProps<"td"> & TableCellExtras) {
   return (
     <td
       data-slot="table-cell"
       className={cn(
-        "p-2 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0",
+        "p-2 align-middle [&:has([role=checkbox])]:pr-0",
+        nowrap && "whitespace-nowrap",
+        sticky && `${stickyCell} z-10`,
         className
       )}
       {...props}

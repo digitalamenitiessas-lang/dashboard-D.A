@@ -122,7 +122,7 @@ export function ActivateMaintenanceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Activar mantenimiento</DialogTitle>
           <DialogDescription>
@@ -151,7 +151,7 @@ export function ActivateMaintenanceDialog({
               />
             </Field>
           ) : null}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="am-amount">Importe</FieldLabel>
               <MoneyInput
@@ -171,7 +171,7 @@ export function ActivateMaintenanceDialog({
               />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="am-frequency">Frecuencia</FieldLabel>
               <SimpleSelect
@@ -186,6 +186,9 @@ export function ActivateMaintenanceDialog({
               <Input
                 id="am-dueday"
                 type="number"
+                // Sin esto iOS abre el teclado alfanumérico completo para
+                // tipear un número del 1 al 28.
+                inputMode="numeric"
                 min="1"
                 max="28"
                 value={dueDay}
@@ -296,7 +299,7 @@ export function CollectMaintenanceDialog({
           <DialogDescription>{project.name}</DialogDescription>
         </DialogHeader>
         <FieldGroup>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="cm-date">Fecha de cobro</FieldLabel>
               <Input

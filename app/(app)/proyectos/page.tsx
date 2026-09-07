@@ -96,8 +96,10 @@ export default function ProyectosPage() {
           <ToggleGroupItem value="terceros">Terceros</ToggleGroupItem>
         </ToggleGroup>
 
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <InputGroup className="sm:w-64">
+        {/* Los filtros secundarios comparten renglón en vez de apilarse:
+            eran cuatro filas antes de ver el primer proyecto. */}
+        <div className="flex flex-wrap items-center gap-2 sm:flex-row sm:items-center">
+          <InputGroup className="min-w-full sm:w-64 sm:min-w-0">
             <InputGroupInput
               placeholder="Buscar proyectos..."
               value={query}
@@ -111,12 +113,13 @@ export default function ProyectosPage() {
             value={statusFilter}
             onValueChange={setStatusFilter}
             options={statusOptions}
-            className="sm:w-48"
+            className="flex-1 sm:w-48 sm:flex-none"
           />
+          {/* La vista tabla son 9 columnas: abajo de sm no se ofrece. */}
           <ToggleGroup
             value={[view]}
             onValueChange={(v) => setView((v[0] as ViewMode) ?? 'tarjetas')}
-            className="w-fit"
+            className="hidden w-fit sm:flex"
           >
             <ToggleGroupItem value="tarjetas" aria-label="Vista en tarjetas">
               <LayoutGrid />
@@ -138,11 +141,28 @@ export default function ProyectosPage() {
           </EmptyHeader>
         </Empty>
       ) : view === 'tabla' ? (
-        <ProjectTable
-          projects={filtered}
-          payments={payments}
-          clientName={clientName}
-        />
+        <>
+          {/* El toggle de vista está oculto abajo de sm, pero el estado puede
+              venir en 'tabla' desde una pantalla más ancha: ahí caen las
+              tarjetas, que es lo único usable a 375px. */}
+          <div className="grid grid-cols-1 gap-4 sm:hidden">
+            {filtered.map((p) => (
+              <ProjectCard
+                key={p.id}
+                project={p}
+                payments={payments}
+                clientName={clientName(p.clientId)}
+              />
+            ))}
+          </div>
+          <div className="hidden sm:block">
+            <ProjectTable
+              projects={filtered}
+              payments={payments}
+              clientName={clientName}
+            />
+          </div>
+        </>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {filtered.map((p) => (

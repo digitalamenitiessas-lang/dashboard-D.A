@@ -62,7 +62,7 @@ export function EditDevelopmentDialog({
           <DialogTitle>Estado del desarrollo</DialogTitle>
           <DialogDescription>{project.name}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form id="ed-form" onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="ed-stage">Etapa actual</FieldLabel>
@@ -78,6 +78,9 @@ export function EditDevelopmentDialog({
               <Input
                 id="ed-progress"
                 type="number"
+                // Sin esto iOS abre el teclado alfanumérico completo para
+                // tipear un número del 0 al 100.
+                inputMode="numeric"
                 min="0"
                 max="100"
                 value={progress}
@@ -95,15 +98,18 @@ export function EditDevelopmentDialog({
               />
             </Field>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving || !valid}>
-              {saving ? 'Guardando...' : 'Guardar'}
-            </Button>
-          </DialogFooter>
         </form>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <DialogFooter className="mt-6">
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="ed-form" disabled={saving || !valid}>
+            {saving ? 'Guardando...' : 'Guardar'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

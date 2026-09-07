@@ -102,7 +102,7 @@ export default function InfraestructuraPage() {
         description="Entornos, dominios, servicios y costos técnicos de cada proyecto."
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Costo mensual"
           value={formatMoneyByCurrency(monthlyCost)}
@@ -150,9 +150,11 @@ export default function InfraestructuraPage() {
                   >
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{domain}</p>
+                      {/* `block`: sobre un <a> inline el truncate no recorta
+                          nada y el nombre largo se montaba sobre la fecha. */}
                       <Link
                         href={`/proyectos/${project.id}`}
-                        className="truncate text-xs text-muted-foreground transition-colors hover:text-neon-green"
+                        className="block truncate text-xs text-muted-foreground transition-colors hover:text-neon-green"
                       >
                         {project.name}
                       </Link>
@@ -228,11 +230,13 @@ export default function InfraestructuraPage() {
           </EmptyHeader>
         </Empty>
       ) : (
-        <div className="glass overflow-x-auto rounded-2xl">
+        // Un solo scroller (el de Table) para que la columna fija se pegue al
+        // contenedor correcto; acá queda sólo el recorte de las esquinas.
+        <div className="glass overflow-hidden rounded-2xl">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Proyecto</TableHead>
+                <TableHead sticky>Proyecto</TableHead>
                 <TableHead>Deploy</TableHead>
                 <TableHead>Hosting</TableHead>
                 <TableHead>Base de datos</TableHead>
@@ -252,7 +256,7 @@ export default function InfraestructuraPage() {
                 const cost = committedMonthly(fixedExpenses, { projectId: p.id })
                 return (
                   <TableRow key={p.id}>
-                    <TableCell className="font-medium">
+                    <TableCell sticky className="font-medium">
                       <Link
                         href={`/proyectos/${p.id}`}
                         className="transition-colors hover:text-neon-green"
@@ -298,13 +302,15 @@ export default function InfraestructuraPage() {
                       {isEmptyMoney(cost) ? '—' : formatMoneyByCurrency(cost)}
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center justify-end gap-2">
+                      {/* Eran dos blancos de 16px a 8px uno del otro: el ícono
+                          sigue igual, lo que crece es la zona tocable. */}
+                      <div className="flex items-center justify-end gap-1">
                         {i.productionUrl ? (
                           <a
                             href={i.productionUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-muted-foreground transition-colors hover:text-neon-blue"
+                            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-neon-blue md:size-8"
                             aria-label={`Producción de ${p.name}`}
                           >
                             <ExternalLink className="size-4" />
@@ -319,7 +325,7 @@ export default function InfraestructuraPage() {
                             }
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-muted-foreground transition-colors hover:text-neon-blue"
+                            className="inline-flex size-10 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:text-neon-blue md:size-8"
                             aria-label={`Repositorio de ${p.name}`}
                           >
                             <GitBranch className="size-4" />

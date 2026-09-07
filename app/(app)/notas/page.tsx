@@ -209,9 +209,12 @@ export default function NotasPage() {
                   <span className="truncate">
                     {note.author} · {formatDate(note.createdAt)}
                   </span>
+                  {/* Era el blanco más chico del área (24px): mismo ícono,
+                      40px de área en el celular y 28 en escritorio. */}
                   <Button
-                    size="icon-xs"
+                    size="icon-sm"
                     variant="ghost"
+                    className="size-10 md:size-7"
                     aria-label={`Editar nota: ${note.title}`}
                     onClick={() => setEditTarget(note)}
                   >
@@ -233,9 +236,10 @@ export default function NotasPage() {
                     <ArrowUpRight data-icon="inline-end" />
                   </Button>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  // Eliminar quedaba a 8px de la acción más usada: más aire y
+                  // los dos botones a tamaño táctil.
+                  <div className="flex items-center gap-3">
                     <Button
-                      size="sm"
                       className="flex-1"
                       onClick={() => void handleConvert(note.id, note.title)}
                     >

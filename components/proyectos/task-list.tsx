@@ -92,25 +92,33 @@ export function TaskList({
                   task.done ? `Reabrir: ${task.title}` : `Completar: ${task.title}`
                 }
                 onClick={() => void toggleTask(task.id, !task.done)}
-                className={cn(
-                  'mt-0.5 flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors',
-                  task.done ? checkedByKind[kind] : dotByKind[kind],
-                )}
+                // El cuadradito sigue midiendo 16px, pero el blanco que se
+                // toca es de 36: el `-m-2` deja el área afuera del flujo, así
+                // que el dibujo queda donde estaba (los 2px del `mt-0.5`
+                // salen solos del centrado).
+                className="-m-2 flex size-9 shrink-0 items-center justify-center"
               >
-                {task.done ? (
-                  <svg
-                    viewBox="0 0 12 12"
-                    className="size-3 text-background"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M2.5 6.5 5 9l4.5-5.5" />
-                  </svg>
-                ) : null}
+                <span
+                  className={cn(
+                    'flex size-4 items-center justify-center rounded-[5px] border transition-colors',
+                    task.done ? checkedByKind[kind] : dotByKind[kind],
+                  )}
+                >
+                  {task.done ? (
+                    <svg
+                      viewBox="0 0 12 12"
+                      className="size-3 text-background"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M2.5 6.5 5 9l4.5-5.5" />
+                    </svg>
+                  ) : null}
+                </span>
               </button>
 
               <div className="min-w-0 flex-1">
@@ -129,11 +137,15 @@ export function TaskList({
                 ) : null}
               </div>
 
+              {/* Se esconde por PUNTERO, no por ancho: en un celular no hay
+                  hover y `focus-visible` no dispara con un toque, así que con
+                  `opacity-0` pelado el botón quedaba invisible pero
+                  clickeable — o no podías borrar, o borrabas sin querer. */}
               <Button
-                size="icon-xs"
+                size="icon-sm"
                 variant="ghost"
                 aria-label={`Eliminar: ${task.title}`}
-                className="shrink-0 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+                className="-mr-1 shrink-0 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:hover)]:group-focus-within:opacity-100"
                 onClick={() => void remove(task)}
               >
                 <Trash2 />
@@ -144,11 +156,13 @@ export function TaskList({
       )}
 
       <form onSubmit={submit} className="flex items-center gap-2">
+        {/* El par completo `h-9 md:h-8`: 36px con el dedo, a tono con el
+            botón `icon-sm` de al lado, y los 32px de siempre en desktop. */}
         <Input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={placeholder}
-          className="h-8"
+          className="h-9 md:h-8"
         />
         <Button
           type="submit"

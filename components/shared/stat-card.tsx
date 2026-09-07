@@ -46,22 +46,30 @@ export function StatCard({
           <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
             {label}
           </p>
+          {/* Los montos vienen de Intl con espacio duro (U+00A0): son un token
+              indivisible. En el celular bajamos a text-xl y habilitamos el corte
+              en cualquier punto, si no el overflow-hidden de la tarjeta los
+              recorta sin puntos suspensivos y se lee un numero equivocado. */}
           <p
             className={cn(
-              'mt-2 font-display text-2xl font-extrabold tabular-nums',
+              'mt-2 font-display text-xl font-extrabold tabular-nums [overflow-wrap:anywhere] sm:text-2xl',
               accentText[accent],
             )}
           >
             {value}
           </p>
           {hint ? (
-            <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
+            <p className="mt-1 text-xs tabular-nums text-muted-foreground">
+              {hint}
+            </p>
           ) : null}
         </div>
+        {/* Abajo de sm el chip del icono se esconde: libera 48px (size-9 + gap-3)
+            para que el monto entre en un renglon. */}
         {Icon ? (
           <div
             className={cn(
-              'flex size-9 shrink-0 items-center justify-center rounded-xl ring-1',
+              'hidden size-9 shrink-0 items-center justify-center rounded-xl ring-1 sm:flex',
               accentIconBg[accent],
             )}
           >

@@ -241,7 +241,7 @@ export function FixedExpenseDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {editing ? 'Editar gasto fijo' : 'Nuevo gasto fijo'}
@@ -251,7 +251,10 @@ export function FixedExpenseDialog({
               después, desde Caja, eligiendo qué período salda.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={submit}>
+          {/* El footer va FUERA del <form> para que sea hijo directo del
+              DialogContent y quede clavado abajo del marco, arriba del
+              teclado. El submit se mantiene con el par id/form del botón. */}
+          <form id="fx-form" onSubmit={submit}>
             <FieldGroup>
               <Field>
                 <FieldLabel htmlFor="fx-concept">Concepto</FieldLabel>
@@ -263,7 +266,7 @@ export function FixedExpenseDialog({
                 />
               </Field>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="fx-vendor">Proveedor</FieldLabel>
                   <Input
@@ -300,7 +303,7 @@ export function FixedExpenseDialog({
                 </p>
               ) : null}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="fx-amount">Monto por período</FieldLabel>
                   <MoneyInput
@@ -321,7 +324,7 @@ export function FixedExpenseDialog({
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="fx-frequency">Frecuencia</FieldLabel>
                   <SimpleSelect
@@ -380,7 +383,7 @@ export function FixedExpenseDialog({
                   : 'Estructura: el costo de tener la empresa abierta. No se prorratea sobre los proyectos.'}
               </p>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="fx-started">Desde</FieldLabel>
                   <Input
@@ -532,34 +535,47 @@ export function FixedExpenseDialog({
                 </p>
               ) : null}
             </FieldGroup>
-
-            <DialogFooter className="mt-6 sm:justify-between">
-              {editing ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  disabled={saving}
-                  onClick={() => setConfirmingDelete(true)}
-                >
-                  Eliminar
-                </Button>
-              ) : (
-                <span />
-              )}
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  onClick={() => onOpenChange(false)}
-                >
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={saving || !valid || !gastosReady}>
-                  {saving ? 'Guardando...' : editing ? 'Guardar' : 'Crear'}
-                </Button>
-              </div>
-            </DialogFooter>
           </form>
+
+          {/* `flex-col` (no el `flex-col-reverse` de la base) para que en el
+              celular se respete el orden del DOM: Eliminar arriba y Guardar
+              al pie, que es donde cae el pulgar. Sin gasto que borrar no hay
+              nada que separar, así que el grupo vuelve a la derecha. */}
+          <DialogFooter
+            className={`mt-6 flex-col sm:flex-row ${
+              editing ? 'sm:justify-between' : ''
+            }`}
+          >
+            {editing ? (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={saving}
+                onClick={() => setConfirmingDelete(true)}
+                className="mt-4 sm:mt-0"
+              >
+                Eliminar
+              </Button>
+            ) : null}
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onOpenChange(false)}
+                className="flex-1 sm:flex-none"
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="submit"
+                form="fx-form"
+                disabled={saving || !valid || !gastosReady}
+                className="flex-1 sm:flex-none"
+              >
+                {saving ? 'Guardando...' : editing ? 'Guardar' : 'Crear'}
+              </Button>
+            </div>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 

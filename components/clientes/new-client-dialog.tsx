@@ -65,14 +65,14 @@ export function NewClientDialog() {
         <Plus data-icon="inline-start" />
         Nuevo cliente
       </DialogTrigger>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-md">
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Nuevo cliente</DialogTitle>
           <DialogDescription>
             Registrá los datos de contacto del cliente.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form id="nc-form" onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="nc-name">Nombre o razón social</FieldLabel>
@@ -92,7 +92,7 @@ export function NewClientDialog() {
                 placeholder="Ej: Marina López"
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="nc-phone">Teléfono</FieldLabel>
                 <Input
@@ -124,15 +124,18 @@ export function NewClientDialog() {
               />
             </Field>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <DialogClose render={<Button type="button" variant="ghost" />}>
-              Cancelar
-            </DialogClose>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Creando...' : 'Crear cliente'}
-            </Button>
-          </DialogFooter>
         </form>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <DialogFooter className="mt-6">
+          <DialogClose render={<Button type="button" variant="ghost" />}>
+            Cancelar
+          </DialogClose>
+          <Button type="submit" form="nc-form" disabled={saving}>
+            {saving ? 'Creando...' : 'Crear cliente'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

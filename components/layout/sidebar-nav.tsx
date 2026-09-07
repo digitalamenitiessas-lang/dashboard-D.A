@@ -25,7 +25,9 @@ export function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
             onClick={onNavigate}
             aria-current={active ? 'page' : undefined}
             className={cn(
-              'group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
+              // py-3 en el celular para que el link llegue a los 44px de
+              // alto táctil; en escritorio, con mouse, vuelve a 40.
+              'group relative flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium transition-all lg:py-2.5',
               active
                 ? 'bg-neon-green/10 text-foreground'
                 : 'text-muted-foreground hover:bg-white/5 hover:text-foreground',

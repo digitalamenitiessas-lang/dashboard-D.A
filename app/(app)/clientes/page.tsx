@@ -103,7 +103,7 @@ export default function ClientesPage() {
         <NewClientDialog />
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Clientes"
           value={clients.length}
@@ -207,44 +207,48 @@ export default function ClientesPage() {
                       </span>
                     ) : null}
                     {client.email ? (
+                      // Un mail es un token indivisible: sin min-w-0 empujaba
+                      // el ancho de la página entera.
                       <a
                         href={`mailto:${client.email}`}
-                        className="inline-flex items-center gap-1.5 transition-colors hover:text-neon-green"
+                        className="inline-flex min-w-0 max-w-full items-center gap-1.5 transition-colors hover:text-neon-green"
                       >
-                        <Mail className="size-3.5" />
-                        {client.email}
+                        <Mail className="size-3.5 shrink-0" />
+                        <span className="truncate">{client.email}</span>
                       </a>
                     ) : null}
                   </div>
 
-                  <div className="mt-4 grid grid-cols-3 gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
-                    <div>
+                  {/* A 375px tres columnas dejaban 84px por monto y se pisaban
+                      entre sí: en el celular va cada uno en su renglón. */}
+                  <div className="mt-4 grid grid-cols-1 gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3 sm:grid-cols-3 sm:gap-3">
+                    <div className="flex items-baseline justify-between gap-2 sm:block">
                       <p className="text-[11px] text-muted-foreground">Cotizado</p>
-                      <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                      <p className="text-sm font-semibold tabular-nums sm:mt-0.5">
                         {formatMoneyByCurrency(quoted)}
                       </p>
                     </div>
-                    <div>
+                    <div className="flex items-baseline justify-between gap-2 sm:block">
                       <p className="text-[11px] text-muted-foreground">Cobrado</p>
-                      <p className="mt-0.5 text-sm font-semibold tabular-nums text-neon-green">
+                      <p className="text-sm font-semibold tabular-nums text-neon-green sm:mt-0.5">
                         {formatMoneyByCurrency(paid)}
                       </p>
                     </div>
-                    <div>
+                    <div className="flex items-baseline justify-between gap-2 sm:block">
                       <p className="text-[11px] text-muted-foreground">Pendiente</p>
-                      <p className="mt-0.5 text-sm font-semibold tabular-nums">
+                      <p className="text-sm font-semibold tabular-nums sm:mt-0.5">
                         {formatMoneyByCurrency(pending)}
                       </p>
                     </div>
                     {/* No conversion rate exists, so a single bar only makes
                         sense while one currency is in play. */}
                     {pct !== null ? (
-                      <div className="col-span-3">
+                      <div className="sm:col-span-3">
                         <Progress value={pct} className="h-1.5" />
                       </div>
                     ) : null}
                     {!isEmptyMoney(maintenance) ? (
-                      <div className="col-span-3 flex items-center justify-between gap-3 border-t border-white/5 pt-2">
+                      <div className="flex items-center justify-between gap-3 border-t border-white/5 pt-2 sm:col-span-3">
                         <span className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
                           <Wrench className="size-3" />
                           Mantenimientos cobrados

@@ -276,7 +276,7 @@ export default function GastosPage() {
       {/* Los cuatro elegidos para que no se pisen: el primero es plata que ya
           salió, el segundo es plata que todavía no salió, el tercero es
           compromiso normalizado y el cuarto es un contador de planes. */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Gasto del mes"
           value={formatMoneyByCurrency(totalMes)}
@@ -419,13 +419,15 @@ export default function GastosPage() {
             </Empty>
           ) : (
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-              <div className="glass overflow-x-auto rounded-2xl xl:col-span-2">
+              {/* El scroll horizontal lo da el contenedor de Table; acá sólo
+                  el recorte de las esquinas, así la columna fija se pega bien. */}
+              <div className="glass overflow-hidden rounded-2xl xl:col-span-2">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Fecha</TableHead>
+                      <TableHead sticky>Fecha</TableHead>
                       <TableHead>Rubro</TableHead>
-                      <TableHead>Concepto</TableHead>
+                      <TableHead nowrap={false}>Concepto</TableHead>
                       <TableHead>Imputado a</TableHead>
                       <TableHead>Cuenta</TableHead>
                       <TableHead className="text-right">Monto</TableHead>
@@ -435,7 +437,7 @@ export default function GastosPage() {
                   <TableBody>
                     {delMes.map((e) => (
                       <TableRow key={e.movementId}>
-                        <TableCell className="tabular-nums whitespace-nowrap">
+                        <TableCell sticky className="tabular-nums">
                           {formatDate(e.date)}
                         </TableCell>
                         <TableCell>
@@ -445,7 +447,10 @@ export default function GastosPage() {
                             <span className="text-amber-300">Sin rubro</span>
                           )}
                         </TableCell>
-                        <TableCell className="font-medium">
+                        <TableCell
+                          nowrap={false}
+                          className="min-w-40 max-w-56 break-words font-medium"
+                        >
                           {e.concept || '—'}
                         </TableCell>
                         <TableCell className="text-muted-foreground">
@@ -550,11 +555,13 @@ export default function GastosPage() {
               </EmptyContent>
             </Empty>
           ) : (
-            <div className="glass overflow-x-auto rounded-2xl">
+            <div className="glass overflow-hidden rounded-2xl">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Concepto</TableHead>
+                    <TableHead sticky nowrap={false}>
+                      Concepto
+                    </TableHead>
                     <TableHead>Rubro</TableHead>
                     <TableHead>Imputado a</TableHead>
                     <TableHead className="text-right">Monto</TableHead>
@@ -570,7 +577,11 @@ export default function GastosPage() {
                     const next = status.next
                     return (
                       <TableRow key={e.id} className={cn(!vigente && 'opacity-60')}>
-                        <TableCell>
+                        <TableCell
+                          sticky
+                          nowrap={false}
+                          className="min-w-48 max-w-64 break-words"
+                        >
                           <span className="font-medium">{e.concept}</span>
                           {e.vendor ? (
                             <span className="block text-xs text-muted-foreground">
@@ -754,13 +765,13 @@ export default function GastosPage() {
                     {formatMoneyByCurrency(totalHistorial)}
                   </span>
                 </div>
-                <div className="glass overflow-x-auto rounded-2xl">
+                <div className="glass overflow-hidden rounded-2xl">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Fecha</TableHead>
+                        <TableHead sticky>Fecha</TableHead>
                         <TableHead>Rubro</TableHead>
-                        <TableHead>Concepto</TableHead>
+                        <TableHead nowrap={false}>Concepto</TableHead>
                         <TableHead>Imputado a</TableHead>
                         <TableHead>Cuenta</TableHead>
                         <TableHead>Gasto fijo</TableHead>
@@ -775,7 +786,7 @@ export default function GastosPage() {
                           : undefined
                         return (
                           <TableRow key={e.movementId}>
-                            <TableCell className="tabular-nums whitespace-nowrap">
+                            <TableCell sticky className="tabular-nums">
                               {formatDate(e.date)}
                             </TableCell>
                             <TableCell>
@@ -787,7 +798,10 @@ export default function GastosPage() {
                                 <span className="text-amber-300">Sin rubro</span>
                               )}
                             </TableCell>
-                            <TableCell className="font-medium">
+                            <TableCell
+                              nowrap={false}
+                              className="min-w-40 max-w-56 break-words font-medium"
+                            >
                               {e.concept || '—'}
                             </TableCell>
                             <TableCell className="text-muted-foreground">

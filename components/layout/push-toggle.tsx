@@ -21,6 +21,7 @@ import {
   pushSupport,
   registerServiceWorker,
 } from '@/lib/push'
+import { cn } from '@/lib/utils'
 
 /**
  * Activa o desactiva los avisos en ESTE dispositivo.
@@ -33,6 +34,10 @@ import {
  * a una pestaña común, hay que agregar la app a la pantalla de inicio
  * primero. Cuando ese es el caso mostramos las instrucciones en vez de
  * un botón que no puede funcionar.
+ *
+ * Se dibuja como una fila con etiqueta, para el menú: en el header era
+ * una campana de 32px pegada a la campana de alertas, y el que se
+ * equivocaba de campana se daba de baja de los avisos sin querer.
  */
 export function PushToggle() {
   const [activo, setActivo] = React.useState(false)
@@ -93,19 +98,32 @@ export function PushToggle() {
 
   return (
     <>
+      {/* min-h en vez de h: así el alto táctil de 44px no depende de la
+          variante del Button ni pelea con ella. */}
       <Button
         variant="ghost"
-        size="icon"
         onClick={() => void alternar()}
         disabled={trabajando}
-        aria-label={activo ? 'Desactivar avisos en este dispositivo' : 'Activar avisos en este dispositivo'}
+        aria-pressed={activo}
         title={activo ? 'Avisos activados en este dispositivo' : 'Activar avisos en este dispositivo'}
+        className="min-h-11 w-full justify-start gap-3 rounded-xl px-3 text-sm font-medium text-muted-foreground hover:text-foreground lg:min-h-10"
       >
         {activo ? (
-          <BellRing className="text-neon-green" />
+          <BellRing className="size-4.5 shrink-0 text-neon-green" />
         ) : (
-          <BellOff className="text-muted-foreground" />
+          <BellOff className="size-4.5 shrink-0 text-muted-foreground" />
         )}
+        <span className="min-w-0 flex-1 truncate text-left">
+          Avisos en este dispositivo
+        </span>
+        <span
+          className={cn(
+            'shrink-0 text-[11px]',
+            activo ? 'text-neon-green' : 'text-muted-foreground',
+          )}
+        >
+          {activo ? 'Activados' : 'Desactivados'}
+        </span>
       </Button>
 
       <Dialog open={ayudaIos} onOpenChange={setAyudaIos}>

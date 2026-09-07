@@ -92,14 +92,14 @@ export function NewNoteDialog({
         <Plus data-icon="inline-start" />
         {triggerLabel}
       </DialogTrigger>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Nueva nota</DialogTitle>
           <DialogDescription>
             Registrá una idea, recordatorio o pendiente.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form id="nn-form" onSubmit={handleSubmit}>
           <FieldGroup>
             {defaultProjectId ? null : (
               <Field>
@@ -135,7 +135,7 @@ export function NewNoteDialog({
                 rows={4}
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="nn-category">Categoría</FieldLabel>
                 <SimpleSelect
@@ -164,7 +164,7 @@ export function NewNoteDialog({
                 placeholder="Ej: Sofía Ramírez"
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="nn-tags">Etiquetas</FieldLabel>
                 <Input
@@ -185,15 +185,18 @@ export function NewNoteDialog({
               </Field>
             </div>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <DialogClose render={<Button type="button" variant="ghost" />}>
-              Cancelar
-            </DialogClose>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Creando...' : 'Crear nota'}
-            </Button>
-          </DialogFooter>
         </form>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <DialogFooter className="mt-6">
+          <DialogClose render={<Button type="button" variant="ghost" />}>
+            Cancelar
+          </DialogClose>
+          <Button type="submit" form="nn-form" disabled={saving}>
+            {saving ? 'Creando...' : 'Crear nota'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

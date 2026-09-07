@@ -75,14 +75,14 @@ export function EditInfrastructureDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90svh] overflow-y-auto sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Editar infraestructura</DialogTitle>
           <DialogDescription>
             No guardes contraseñas ni tokens acá.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit}>
+        <form id="ei-form" onSubmit={handleSubmit}>
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="ei-prod">URL de producción</FieldLabel>
@@ -111,7 +111,7 @@ export function EditInfrastructureDialog({
                 placeholder="github.com/usuario/repo"
               />
             </Field>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ei-deploy">Plataforma de deploy</FieldLabel>
                 <Input
@@ -131,7 +131,7 @@ export function EditInfrastructureDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ei-domain">Dominio</FieldLabel>
                 <Input
@@ -151,7 +151,7 @@ export function EditInfrastructureDialog({
                 />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="ei-db">Base de datos</FieldLabel>
                 <Input
@@ -195,15 +195,18 @@ export function EditInfrastructureDialog({
               />
             </Field>
           </FieldGroup>
-          <DialogFooter className="mt-6">
-            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
-              Cancelar
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? 'Guardando...' : 'Guardar cambios'}
-            </Button>
-          </DialogFooter>
         </form>
+        {/* El footer va FUERA del <form> para que sea hijo directo del
+            DialogContent y quede clavado abajo del marco, arriba del
+            teclado. El submit se mantiene con el par id/form del botón. */}
+        <DialogFooter className="mt-6">
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
+            Cancelar
+          </Button>
+          <Button type="submit" form="ei-form" disabled={saving}>
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

@@ -42,8 +42,11 @@ export default function LoginPage() {
     router.refresh()
   }
 
+  // Los cuatro insets van separados: con px/py el hueco de la izquierda
+  // se aplicaba también a la derecha, así que al girar el teléfono para
+  // el otro lado el aire quedaba del lado que no tiene muesca.
   return (
-    <main className="flex min-h-svh items-center justify-center px-[calc(1rem+env(safe-area-inset-left))] py-[calc(2.5rem+env(safe-area-inset-top))]">
+    <main className="flex min-h-svh items-center justify-center pt-[calc(2.5rem+env(safe-area-inset-top))] pr-[calc(1rem+env(safe-area-inset-right))] pb-[calc(2.5rem+env(safe-area-inset-bottom))] pl-[calc(1rem+env(safe-area-inset-left))]">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center text-center">
           <span className="flex size-14 items-center justify-center rounded-2xl border border-white/10 bg-white/5">

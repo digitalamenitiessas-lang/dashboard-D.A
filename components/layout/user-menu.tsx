@@ -35,7 +35,10 @@ export function UserMenu({ email }: { email: string }) {
         render={
           <Button
             variant="ghost"
-            className="h-auto gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1.5"
+            // `md:h-auto` además de `h-auto`: el Button ahora trae el par
+            // `h-10 md:h-8`, y sin apagar el segundo el avatar de 28px más el
+            // py-1.5 se desbordaba de una caja de 32px en escritorio.
+            className="h-auto gap-2 rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 md:h-auto"
           />
         }
       >
