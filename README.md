@@ -1,6 +1,6 @@
 # Digital Amenities · Centro de Control
 
-Dashboard interno de gestión: proyectos, clientes, cobros, mantenimientos,
+Dashboard interno de gestión: proyectos y clientes, cobros, mantenimientos,
 gastos, caja, infraestructura, tickets, notas y alertas. Los **proyectos** son
 el núcleo del sistema y todo lo demás cuelga de ellos.
 
@@ -85,6 +85,7 @@ npx next dev
 
 ```
 app/(app)/        Pantallas autenticadas (dashboard, proyectos, cobros, ...)
+app/(app)/clientes  Sólo redirige: clientes es una pestaña de /proyectos
 app/login/        Pantalla de acceso
 proxy.ts          Refresca la sesión y manda a /login a quien no la tenga
 components/       UI (ui/ es shadcn; el resto es por dominio)
@@ -128,6 +129,17 @@ supabase/         Scripts SQL versionados
   moneda de *su* cuenta. Por eso un cambio de dólares a pesos es un movimiento
   de una cuenta USD a una ARS con dos montos distintos: la cotización de esa
   operación queda registrada como dato real, no estimada.
+- **Clientes no es una pantalla, es una pestaña de `/proyectos`.** Un cliente
+  sin sus proyectos no dice nada y un proyecto de terceros sin su cliente
+  tampoco, así que el cliente es el *agrupador* de los proyectos de terceros.
+  La sección se corta en dos pestañas —«De clientes» y «Propios»— y cada una
+  lleva sus propios totales: mezclados, el «total cotizado» sumaba producto
+  propio con trabajo facturable y no contestaba ninguna de las dos preguntas.
+  El corte no es cosmético, sale del modelo: los diálogos de proyecto fuerzan
+  `clientId = type === 'terceros' ? clientId : null`, así que un proyecto
+  propio no puede tener cliente. La ruta `/clientes` sobrevive sólo como
+  redirección, porque esa URL está en marcadores y en la pantalla de inicio de
+  quien instaló la PWA.
 - **Un ticket no tiene columna `status`.** El estado se lee de `resolved_at`:
   null es abierto, con fecha es resuelto. Resolver es poner la fecha y reabrir
   es sacarla; `ticketStatus()` en `lib/derive.ts` hace la lectura y es el único

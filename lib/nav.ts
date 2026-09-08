@@ -7,7 +7,6 @@ import {
   Server,
   StickyNote,
   Ticket,
-  Users,
   Wallet,
   Wrench,
   type LucideIcon,
@@ -21,8 +20,10 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
-  { label: 'Proyectos', href: '/proyectos', icon: FolderKanban },
-  { label: 'Clientes', href: '/clientes', icon: Users },
+  // Clientes vive adentro de Proyectos, como pestaña: un cliente sin sus
+  // proyectos no dice nada. /clientes sigue existiendo, pero sólo para
+  // redirigir ahí.
+  { label: 'Proyectos y clientes', href: '/proyectos', icon: FolderKanban },
   { label: 'Cobros', href: '/cobros', icon: Wallet },
   { label: 'Caja', href: '/caja', icon: Landmark },
   { label: 'Gastos', href: '/gastos', icon: Receipt },
