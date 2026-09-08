@@ -1,7 +1,8 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { LogOut } from 'lucide-react'
+import Link from 'next/link'
+import { KeyRound, LogOut } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -10,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { createClient } from '@/lib/supabase/client'
+import { RUTA_CAMBIAR_PASSWORD } from '@/lib/auth'
 
 /** Initials from the email local part, e.g. "matias.w@…" -> "MW". */
 function initials(email: string) {
@@ -53,6 +55,15 @@ export function UserMenu({ email }: { email: string }) {
         <div className="border-b border-white/5 px-2 py-1.5">
           <p className="truncate text-xs text-muted-foreground">{email}</p>
         </div>
+        {/* La misma pantalla del primer ingreso, en su modo voluntario: sin
+            esto, la contraseña sólo se podría cambiar una vez en la vida. */}
+        {/* Sin `nativeButton`: la regla del README es para `Button`, que por
+            defecto asume un <button>. `Menu.Item` de Base UI asume lo
+            contrario, así que un <a> ya es su caso normal. */}
+        <DropdownMenuItem render={<Link href={RUTA_CAMBIAR_PASSWORD} />}>
+          <KeyRound />
+          Cambiar contraseña
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => void signOut()}>
           <LogOut />
           Cerrar sesión

@@ -65,12 +65,49 @@ crea cuando lo volvés a correr.
 ### 4. Usuario y seguridad
 
 La app no tiene registro público: los usuarios se crean a mano desde
-*Authentication → Users → Add user* (con «Auto Confirm User»).
+*Authentication → Users → Add user*, con «Auto Confirm User» tildado y una
+contraseña provisoria cualquiera.
+
+**Eso es todo lo que hay que hacer.** No hay que tocar metadatos ni correr
+ningún SQL después: la primera vez que la persona entra, la app la manda a
+`/cambiar-contrasena` y no la deja ir a ninguna otra pantalla hasta que elija
+una propia. La contraseña provisoria sólo tiene que sobrevivir el viaje hasta
+su dueño.
 
 > **Importante:** desactivá el registro público en *Authentication → Sign In /
 > Providers → Email* («Allow new users to sign up»). Las políticas de RLS le dan
 > acceso total a cualquier usuario autenticado, así que sin esto cualquiera con
 > la anon key podría crearse una cuenta y ver todos los datos.
+
+Cómo sabe la app que alguien todavía usa la provisoria: por la **ausencia** de
+`password_changed_at` en sus metadatos, que se escribe recién cuando elige la
+suya. La marca dice «ya la cambió» y no «tiene que cambiarla», y esa inversión
+es deliberada — el panel de Supabase no tiene campo de metadatos en el alta,
+así que la marca al derecho obligaría a un `UPDATE` a mano después de cada
+usuario nuevo, que es el paso que uno se olvida. Así, un usuario sin metadatos
+—recién creado, migrado, o creado por cualquier otra vía— cae del lado seguro:
+se le pide el cambio.
+
+Consecuencia al instalar esto sobre una base que ya venía andando: **las
+cuentas que ya existían también van a caer en la pantalla de cambio**, porque
+tampoco tienen la marca. Suele ser lo que uno quiere. Si preferís que alguna
+siga como está, marcala a mano una vez desde el SQL Editor:
+
+```sql
+update auth.users
+   set raw_user_meta_data =
+       coalesce(raw_user_meta_data, '{}'::jsonb) ||
+       jsonb_build_object('password_changed_at', now())
+ where email = 'la-cuenta@ejemplo.com';
+```
+
+> Lo que esto **no** es: un candado. `user_metadata` lo puede escribir el
+> propio usuario con la anon key, así que alguien decidido puede marcarse solo
+> y saltear la pantalla. Lo único que se saltea es su propio cambio de
+> contraseña — no abre ni un dato que su sesión no viera ya. Para que fuera un
+> candado, la marca tendría que vivir en `app_metadata` y limpiarla una Edge
+> Function con la `service_role`; está anotado en `lib/auth.ts` como la puerta
+> a abrir si algún día hace falta.
 
 ### 5. Levantar el proyecto
 
@@ -232,7 +269,10 @@ de saltearla. `pushSupport()` en [`lib/push.ts`](lib/push.ts) distingue «no se
 puede» de «falta instalarla» justamente para poder mostrar las instrucciones en
 vez de un botón que nunca va a andar. En Android alcanza con tocar la campana.
 
-La suscripción es **por dispositivo, no por usuario**: como toda la empresa
-entra con la misma cuenta, cada celular se da de alta una vez y el aviso va a
-todos los dados de alta. El `upsert` va por `endpoint`, así que reactivar en el
-mismo celular no duplica.
+La suscripción es **por dispositivo, no por usuario**: cada celular se da de
+alta una vez y el aviso va a todos los dados de alta, sin importar con qué
+cuenta se entró. El `upsert` va por `endpoint`, así que reactivar en el mismo
+celular no duplica. Eso venía de cuando toda la empresa compartía una cuenta,
+pero sigue siendo lo correcto con un usuario por persona: lo que recibe un
+aviso es un teléfono, no una identidad, y nadie quiere enterarse de un grado 3
+sólo en la computadora donde tiene la sesión abierta.
