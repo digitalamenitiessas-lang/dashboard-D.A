@@ -23,8 +23,10 @@ import {
   mapTask,
   movementToRow,
   noteToRow,
+  mapTicket,
   paymentToRow,
   projectToRow,
+  ticketToRow,
 } from './mappers'
 import { formatMoney, todayIso } from './format'
 import type {
@@ -44,6 +46,7 @@ import type {
   ProjectStatus,
   Task,
   TaskKind,
+  Ticket,
 } from './types'
 
 export interface NewProjectInput {
@@ -80,10 +83,17 @@ interface StoreValue {
    * (`lib/gastos.ts`). Acá no hay nada de plata que haya salido.
    */
   fixedExpenses: FixedExpense[]
+  /**
+   * Reclamos y pedidos de clientes. Siempre contra un proyecto, y el estado
+   * no se guarda: `resolvedAt` null = abierto. Ver `lib/types.ts`.
+   */
+  tickets: Ticket[]
   /** False until `08_caja.sql` has been run on the database. */
   cajaReady: boolean
   /** False mientras no se haya corrido `10_gastos.sql`. Mismo degradado. */
   gastosReady: boolean
+  /** False mientras no se haya corrido `11_tickets.sql`. Mismo degradado. */
+  ticketsReady: boolean
   refresh: () => Promise<void>
 
   // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
@@ -162,6 +172,20 @@ interface StoreValue {
     patch: Partial<FixedExpense>,
   ) => Promise<boolean>
   deleteFixedExpense: (id: string) => Promise<boolean>
+
+  // tickets
+  //
+  // No hay `setTicketStatus`: el estado es `resolvedAt`, así que resolver y
+  // reabrir son las dos únicas transiciones y cada una tiene su método. Un
+  // setter genérico dejaría escribir un estado sin fecha, que es justo lo
+  // que el modelo evita.
+  addTicket: (
+    ticket: Omit<Ticket, 'id' | 'createdAt' | 'resolvedAt' | 'resolution'>,
+  ) => Promise<boolean>
+  updateTicket: (id: string, patch: Partial<Ticket>) => Promise<boolean>
+  resolveTicket: (id: string, resolution: string) => Promise<boolean>
+  reopenTicket: (id: string) => Promise<boolean>
+  deleteTicket: (id: string) => Promise<boolean>
 
   // maintenance
   activateMaintenance: (
@@ -251,8 +275,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [accounts, setAccounts] = React.useState<Account[]>([])
   const [movements, setMovements] = React.useState<MoneyMovement[]>([])
   const [fixedExpenses, setFixedExpenses] = React.useState<FixedExpense[]>([])
+  const [tickets, setTickets] = React.useState<Ticket[]>([])
   const [cajaReady, setCajaReady] = React.useState(true)
   const [gastosReady, setGastosReady] = React.useState(true)
+  const [ticketsReady, setTicketsReady] = React.useState(true)
 
   /**
    * Surfaces the failure to the user and keeps it out of the happy path.
@@ -274,7 +300,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc, acc, mov, fe] = await Promise.all([
+      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk] = await Promise.all([
         supabase
           .from('projects')
           .select(PROJECT_SELECT)
@@ -306,6 +332,20 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .select('*')
           .order('moved_on', { ascending: false }),
         supabase.from('fixed_expenses').select('*').order('concept'),
+        // Los abiertos primero (son los `resolved_at` nulos) y, dentro de
+        // cada grupo, lo más urgente o lo más reciente arriba.
+        //
+        // DESCENDENTE con nullsFirst, no ascendente: tiene que dar el MISMO
+        // orden que `sortTickets`, que es quien reordena la lista después de
+        // cada mutación. Con ascendente los resueltos venían del más viejo
+        // al más nuevo y la pestaña Resueltos se daba vuelta sola apenas
+        // tocabas cualquier cosa.
+        supabase
+          .from('tickets')
+          .select('*')
+          .order('resolved_at', { ascending: false, nullsFirst: true })
+          .order('grade', { ascending: false })
+          .order('created_at', { ascending: false }),
       ])
 
       // Caja is the newest module: if 08_caja.sql hasn't been run yet its
@@ -325,6 +365,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const gastosMissing = missing(fe.error)
       setGastosReady(!gastosMissing)
 
+      // Y lo mismo para tickets: sin `11_tickets.sql` la tabla no existe y
+      // la pantalla degrada al cartel que dice qué correr, en vez de tirar
+      // abajo el resto de la app.
+      const ticketsMissing = missing(tk.error)
+      setTicketsReady(!ticketsMissing)
+
       const firstError =
         p.error ||
         c.error ||
@@ -334,7 +380,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         t.error ||
         mc.error ||
         (cajaMissing ? null : acc.error || mov.error) ||
-        (gastosMissing ? null : fe.error)
+        (gastosMissing ? null : fe.error) ||
+        (ticketsMissing ? null : tk.error)
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -347,6 +394,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setAccounts((acc.data ?? []).map(mapAccount))
       setMovements((mov.data ?? []).map(mapMovement))
       setFixedExpenses((fe.data ?? []).map(mapFixedExpense))
+      setTickets((tk.data ?? []).map(mapTicket))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -480,6 +528,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // El FK de fixed_expenses es CASCADE: los planes del proyecto se
         // fueron con él.
         setFixedExpenses((prev) => prev.filter((f) => f.projectId !== id))
+        // Y el de tickets también: `tickets.project_id` es CASCADE, así que
+        // en la base ya no están. Sin esto quedaban en memoria apuntando a
+        // un proyecto inexistente y la pantalla los mostraba como «Proyecto
+        // eliminado» hasta la próxima recarga.
+        setTickets((prev) => prev.filter((t) => t.projectId !== id))
         return true
       } catch (e) {
         // Si alguno de esos planes tenía pagos, el cascade lo frena el
@@ -1232,6 +1285,173 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, reloadProject, projects, logActivity, fail],
   )
 
+  // -------------------------------------------------------------------
+  // Tickets
+  //
+  // El orden es el mismo que pide el `refresh`: abiertos arriba, y dentro
+  // de cada grupo el grado más alto primero. Se reordena en memoria después
+  // de cada mutación en vez de volver a pedir la lista: resolver un ticket
+  // lo tiene que mandar al fondo en el acto, y un refetch por click es un
+  // viaje a la base para reacomodar cinco filas.
+  // -------------------------------------------------------------------
+  const sortTickets = React.useCallback((list: Ticket[]) => {
+    return [...list].sort((a, b) => {
+      const abiertoA = a.resolvedAt === null
+      const abiertoB = b.resolvedAt === null
+      if (abiertoA !== abiertoB) return abiertoA ? -1 : 1
+      if (!abiertoA) {
+        // Entre resueltos manda el más recientemente resuelto.
+        return (b.resolvedAt ?? '').localeCompare(a.resolvedAt ?? '')
+      }
+      if (a.grade !== b.grade) return b.grade - a.grade
+      return b.createdAt.localeCompare(a.createdAt)
+    })
+  }, [])
+
+  const addTicket = React.useCallback(
+    async (
+      ticket: Omit<Ticket, 'id' | 'createdAt' | 'resolvedAt' | 'resolution'>,
+    ) => {
+      try {
+        const { data, error } = await supabase
+          .from('tickets')
+          .insert(ticketToRow(ticket))
+          .select()
+          .single()
+        if (error) throw error
+        setTickets((prev) => sortTickets([mapTicket(data), ...prev]))
+        await logActivity({
+          projectId: ticket.projectId,
+          type: 'ticket',
+          message: `Ticket nuevo (grado ${ticket.grade}): ${ticket.title}`,
+        })
+        return true
+      } catch (e) {
+        fail('crear el ticket', e)
+        return false
+      }
+    },
+    [supabase, sortTickets, logActivity, fail],
+  )
+
+  const updateTicket = React.useCallback(
+    async (id: string, patch: Partial<Ticket>) => {
+      try {
+        const row = ticketToRow(patch)
+        if (Object.keys(row).length === 0) return true
+        const { data, error } = await supabase
+          .from('tickets')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        setTickets((prev) =>
+          sortTickets(prev.map((t) => (t.id === id ? mapTicket(data) : t))),
+        )
+        return true
+      } catch (e) {
+        fail('guardar el ticket', e)
+        return false
+      }
+    },
+    [supabase, sortTickets, fail],
+  )
+
+  /**
+   * Resolver es poner la fecha, porque la fecha ES el estado. Se manda un
+   * instante ISO y no `todayIso()`: `resolved_at` es timestamptz, no una
+   * fecha-día, así que acá el UTC de `toISOString()` es lo correcto y no
+   * el error que `lib/format.ts` advierte para las columnas `date`.
+   *
+   * La condición `is('resolved_at', null)` no es decorativa: si dos
+   * personas tocan Resolver casi al mismo tiempo desde dos celulares, la
+   * segunda no piso la resolución de la primera — no encuentra fila, y el
+   * store lo dice en vez de sobrescribir en silencio.
+   */
+  const resolveTicket = React.useCallback(
+    async (id: string, resolution: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('tickets')
+          .update({
+            resolved_at: new Date().toISOString(),
+            resolution: resolution.trim(),
+          })
+          .eq('id', id)
+          .is('resolved_at', null)
+          .select()
+          .maybeSingle()
+        if (error) throw error
+        if (!data) {
+          toast.info('Ese ticket ya estaba resuelto', {
+            description: 'Alguien lo resolvió antes. Recargá para ver cómo quedó.',
+          })
+          return false
+        }
+        const ticket = mapTicket(data)
+        setTickets((prev) =>
+          sortTickets(prev.map((t) => (t.id === id ? ticket : t))),
+        )
+        await logActivity({
+          projectId: ticket.projectId,
+          type: 'ticket',
+          message: `Ticket resuelto: ${ticket.title}`,
+        })
+        return true
+      } catch (e) {
+        fail('resolver el ticket', e)
+        return false
+      }
+    },
+    [supabase, sortTickets, logActivity, fail],
+  )
+
+  /** Reabrir es sacarle la fecha. La resolución se borra con ella: si vuelve
+   *  a estar abierto, lo que se había hecho no alcanzó. */
+  const reopenTicket = React.useCallback(
+    async (id: string) => {
+      try {
+        const { data, error } = await supabase
+          .from('tickets')
+          .update({ resolved_at: null, resolution: '' })
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        const ticket = mapTicket(data)
+        setTickets((prev) =>
+          sortTickets(prev.map((t) => (t.id === id ? ticket : t))),
+        )
+        await logActivity({
+          projectId: ticket.projectId,
+          type: 'ticket',
+          message: `Ticket reabierto: ${ticket.title}`,
+        })
+        return true
+      } catch (e) {
+        fail('reabrir el ticket', e)
+        return false
+      }
+    },
+    [supabase, sortTickets, logActivity, fail],
+  )
+
+  const deleteTicket = React.useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase.from('tickets').delete().eq('id', id)
+        if (error) throw error
+        setTickets((prev) => prev.filter((t) => t.id !== id))
+        return true
+      } catch (e) {
+        fail('eliminar el ticket', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
   // Sin memoizar, cada render del provider arma un objeto nuevo y despierta
   // a todas las pantallas que leen el store aunque no haya cambiado un dato.
   const value = React.useMemo<StoreValue>(
@@ -1248,8 +1468,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       accounts,
       movements,
       fixedExpenses,
+      tickets,
       cajaReady,
       gastosReady,
+      ticketsReady,
       refresh,
       addProject,
       updateProject,
@@ -1281,6 +1503,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addFixedExpense,
       updateFixedExpense,
       deleteFixedExpense,
+      addTicket,
+      updateTicket,
+      resolveTicket,
+      reopenTicket,
+      deleteTicket,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,
@@ -1298,8 +1525,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       accounts,
       movements,
       fixedExpenses,
+      tickets,
       cajaReady,
       gastosReady,
+      ticketsReady,
       refresh,
       addProject,
       updateProject,
@@ -1331,6 +1560,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addFixedExpense,
       updateFixedExpense,
       deleteFixedExpense,
+      addTicket,
+      updateTicket,
+      resolveTicket,
+      reopenTicket,
+      deleteTicket,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,

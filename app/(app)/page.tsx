@@ -8,20 +8,24 @@ import {
   Clock,
   FolderKanban,
   Lightbulb,
+  Ticket as TicketIcon,
   TrendingUp,
   Wallet,
   Wrench,
 } from 'lucide-react'
 import { PageHeader } from '@/components/shared/page-header'
 import { StatCard } from '@/components/shared/stat-card'
-import { StatusChip } from '@/components/shared/status-chip'
+import { StatusChip, TicketGradeChip } from '@/components/shared/status-chip'
 import { SectionCard } from '@/components/dashboard/section-card'
 import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
 import {
   buildAlerts,
+  isTicketOpen,
   maintenancePeriods,
+  openTicketsByGrade,
   projectFinance,
+  ticketAge,
   type AlertLevel,
 } from '@/lib/derive'
 import { formatMoney, formatDate, relativeDays, daysUntil } from '@/lib/format'
@@ -41,8 +45,16 @@ const alertDot: Record<AlertLevel, string> = {
 }
 
 export default function DashboardPage() {
-  const { projects, payments, notes, activity, tasks, maintenanceCharges } =
-    useStore()
+  const {
+    projects,
+    payments,
+    notes,
+    activity,
+    tasks,
+    maintenanceCharges,
+    tickets,
+    ticketsReady,
+  } = useStore()
 
   const finances = projects.map((p) =>
     projectFinance(p, payments, maintenanceCharges),
@@ -89,11 +101,18 @@ export default function DashboardPage() {
     .sort((a, b) => a.next.localeCompare(b.next))
     .slice(0, 4)
 
+  // Los abiertos ya vienen ordenados por grado desde el store: los cinco
+  // primeros son, literalmente, lo más urgente que hay sin resolver.
+  const openTickets = tickets.filter(isTicketOpen)
+  const ticketsByGrade = openTicketsByGrade(tickets)
+  const topTickets = openTickets.slice(0, 5)
+
   const alerts = buildAlerts({
     projects,
     notes,
     tasks,
     maintenanceCharges,
+    tickets,
   }).slice(0, 5)
 
   const recentProjects = [...projects]
@@ -246,7 +265,11 @@ export default function DashboardPage() {
         </SectionCard>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      {/* Dos columnas y no tres: con tres, «Proyectos» ocupa dos unidades y
+          las otras dos tarjetas suman cuatro en una grilla de tres, así que
+          la última caía sola con dos tercios de fila vacíos. Acá proyectos
+          se lleva la fila entera y tickets y notas comparten la de abajo. */}
+      <div className="grid gap-4 lg:grid-cols-2">
         {/* Recently updated projects */}
         <SectionCard
           title="Proyectos actualizados recientemente"
@@ -288,6 +311,57 @@ export default function DashboardPage() {
               )
             })}
           </ul>
+        </SectionCard>
+
+        {/* Open tickets */}
+        <SectionCard title="Tickets para resolver" icon={TicketIcon} href="/tickets">
+          {/* Sin la migración corrida `tickets` llega vacío, y un «no hay
+              nada pendiente» sería una mentira tranquilizadora: lo que pasa
+              es que la tabla no existe todavía. */}
+          {!ticketsReady ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              Falta correr{' '}
+              <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs">
+                supabase/11_tickets.sql
+              </code>
+              .
+            </p>
+          ) : topTickets.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              No hay reclamos ni pedidos pendientes.
+            </p>
+          ) : (
+            <>
+              <p className="mb-3 text-xs text-muted-foreground tabular-nums">
+                {openTickets.length} abierto{openTickets.length === 1 ? '' : 's'}
+                {ticketsByGrade[3] > 0
+                  ? ` · ${ticketsByGrade[3]} urgente${ticketsByGrade[3] === 1 ? '' : 's'}`
+                  : ''}
+              </p>
+              <ul className="flex flex-col gap-3">
+                {topTickets.map((t) => {
+                  const dias = ticketAge(t)
+                  return (
+                    <li
+                      key={t.id}
+                      className="rounded-xl border border-white/5 bg-white/[0.02] p-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                          {t.title}
+                        </p>
+                        <TicketGradeChip grade={t.grade} short />
+                      </div>
+                      <p className="mt-2 truncate text-[11px] text-muted-foreground tabular-nums">
+                        {projects.find((p) => p.id === t.projectId)?.name ?? '—'} ·{' '}
+                        {dias === 0 ? 'hoy' : `hace ${dias} día(s)`}
+                      </p>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
+          )}
         </SectionCard>
 
         {/* Recent notes */}

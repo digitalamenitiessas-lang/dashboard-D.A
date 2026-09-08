@@ -1,8 +1,8 @@
 # Digital Amenities · Centro de Control
 
 Dashboard interno de gestión: proyectos, clientes, cobros, mantenimientos,
-infraestructura, notas y alertas. Los **proyectos** son el núcleo del sistema y
-todo lo demás cuelga de ellos.
+gastos, caja, infraestructura, tickets, notas y alertas. Los **proyectos** son
+el núcleo del sistema y todo lo demás cuelga de ellos.
 
 ## Stack
 
@@ -47,10 +47,20 @@ de Supabase, en orden:
 | `06_tareas_y_notas.sql` | Tareas por proyecto y notas vinculadas |
 | `07_pagos_sin_vencimiento.sql` | Saca `due_date` y `status` de `payments` |
 | `08_caja.sql` | Cuentas y movimientos de dinero |
+| `10_gastos.sql` | Gastos fijos y en qué se va la plata |
+| `11_tickets.sql` | Reclamos y pedidos de clientes |
+| `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
-Para una instalación nueva alcanza con **03**, **06** y **08**: el 03 ya crea
-`payments` con la forma final. El **07** es la migración para una base creada
-antes de ese cambio. Los dos últimos son idempotentes.
+Para una instalación nueva alcanza con **03**, **06**, **08**, **10** y **11**:
+el 03 ya crea `payments` con la forma final. El **07** es la migración para una
+base creada antes de ese cambio. Del 08 en adelante son todos idempotentes: se
+pueden correr de nuevo sin romper nada.
+
+El **20** es aparte y se explica en [Notificaciones push](#notificaciones-push).
+Conviene correrlo **antes** del 11: el 11 crea los triggers que avisan de un
+ticket nuevo, y para eso necesita que ya exista la función `notificar()`. Si lo
+corrés al revés no se rompe nada — el 11 avisa que salteó los triggers y los
+crea cuando lo volvés a correr.
 
 ### 4. Usuario y seguridad
 
@@ -118,6 +128,26 @@ supabase/         Scripts SQL versionados
   moneda de *su* cuenta. Por eso un cambio de dólares a pesos es un movimiento
   de una cuenta USD a una ARS con dos montos distintos: la cotización de esa
   operación queda registrada como dato real, no estimada.
+- **Un ticket no tiene columna `status`.** El estado se lee de `resolved_at`:
+  null es abierto, con fecha es resuelto. Resolver es poner la fecha y reabrir
+  es sacarla; `ticketStatus()` en `lib/derive.ts` hace la lectura y es el único
+  lugar donde vive la regla. Es la misma decisión que `fixed_expenses.ended_on`
+  y por el mismo motivo: un `status` al lado de una fecha son dos formas de
+  decir lo mismo y una de las dos siempre termina mintiendo.
+- **La fecha de resolución la pone la base, no el celular.** Un trigger BEFORE
+  (`sellar_resolucion_ticket`) pisa lo que mande el cliente con `now()`. Sin
+  eso, un teléfono con la hora atrasada escribiría un `resolved_at` anterior al
+  `created_at` y el CHECK rechazaría la operación con un error incomprensible.
+- **La urgencia de un ticket es un número, no un enum.** Grados 1, 2 y 3, con
+  `grade >= 2` significando lo mismo en SQL y en TypeScript. No reusa
+  `Priority` (Baja/Media/Alta/Crítica) porque son dos escalas de distinto
+  tamaño y mapearlas dejaría la equivalencia escrita en un solo lado.
+- `buildAlerts()` **no tiene parámetros opcionales**, a propósito. Los tenía, y
+  como la campana del header y `/alertas` no pasaban `maintenanceCharges`,
+  marcaban como vencido todo mantenimiento aunque estuviera al día — tres
+  vistas del mismo motor daban tres números distintos. Si agregás una entrada
+  nueva, que sea obligatoria: olvidarse tiene que ser un error de compilación y
+  no una alerta fantasma.
 
 ## Notificaciones push
 
@@ -128,6 +158,15 @@ es la única que puede firmar con la clave VAPID.
 **Nada se manda desde un trigger.** El trigger sólo encola en `notifications`;
 si el push falla o se cae Internet, el guardado del usuario no se rompe. Un
 `dedupe_key` con la fecha adentro evita que un vencimiento avise cada minuto.
+
+Avisan: un cobro, un mantenimiento cobrado, un movimiento de caja, un proyecto
+nuevo o que cambia de estado, una nota nueva, un **ticket nuevo** y un **ticket
+resuelto** (`supabase/20_push.sql` y `supabase/11_tickets.sql`). Aparte, una vez
+por día a las 9:00 de Buenos Aires, `revisar_vencimientos()` busca lo que venció.
+
+Los avisos de ticket van con `dedupe_key` en null y es correcto: un reclamo
+nuevo es un hecho único, no un vencimiento que se repite todos los días. El
+dedupe es para lo segundo.
 
 ### Puesta en marcha
 

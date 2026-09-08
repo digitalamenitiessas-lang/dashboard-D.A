@@ -6,6 +6,7 @@ import {
   Receipt,
   Server,
   StickyNote,
+  Ticket,
   Users,
   Wallet,
   Wrench,
@@ -27,6 +28,7 @@ export const navItems: NavItem[] = [
   { label: 'Gastos', href: '/gastos', icon: Receipt },
   { label: 'Mantenimientos', href: '/mantenimientos', icon: Wrench },
   { label: 'Infraestructura', href: '/infraestructura', icon: Server },
+  { label: 'Tickets', href: '/tickets', icon: Ticket },
   { label: 'Notas e ideas', href: '/notas', icon: StickyNote },
   { label: 'Alertas', href: '/alertas', icon: Bell },
 ]
