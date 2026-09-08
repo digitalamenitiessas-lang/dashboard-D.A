@@ -14,6 +14,8 @@ import type {
   Payment,
   Project,
   Task,
+  Ticket,
+  TicketStatus,
 } from './types'
 
 export interface ProjectFinance {
@@ -257,6 +259,47 @@ export function maintenancePeriods(
   return { next: overdue[0] ?? next, overdue, overdueTotal }
 }
 
+// ---------------------------------------------------------------------
+// Tickets
+// ---------------------------------------------------------------------
+
+/**
+ * El estado de un ticket no se guarda: se lee de `resolvedAt`. Toda la app
+ * pasa por acá, así que la regla vive en un solo lugar y no hay forma de
+ * que una pantalla diga «Abierto» y otra «Resuelto» de la misma fila.
+ */
+export function ticketStatus(ticket: Ticket): TicketStatus {
+  return ticket.resolvedAt === null ? 'Abierto' : 'Resuelto'
+}
+
+export function isTicketOpen(ticket: Ticket): boolean {
+  return ticket.resolvedAt === null
+}
+
+/** Cuántos abiertos hay de cada grado. Las claves son los tres grados. */
+export function openTicketsByGrade(tickets: Ticket[]): Record<1 | 2 | 3, number> {
+  const count: Record<1 | 2 | 3, number> = { 1: 0, 2: 0, 3: 0 }
+  for (const t of tickets) if (isTicketOpen(t)) count[t.grade] += 1
+  return count
+}
+
+/**
+ * Días enteros que lleva abierto. Null si ya está resuelto.
+ *
+ * Se mide sobre el INSTANTE, no sobre los primeros diez caracteres de
+ * `createdAt`. Esos diez caracteres son la fecha en UTC, y un ticket
+ * cargado a las 22:00 de Buenos Aires ya cae en el día siguiente en UTC:
+ * recién creado, se leería «1 día abierto» — y con el umbral en 0, un
+ * grado 2 nacería casi a mitad de camino de su alerta. La resta de
+ * instantes no tiene ese problema.
+ */
+export function ticketAge(ticket: Ticket, now = new Date()): number | null {
+  if (!isTicketOpen(ticket)) return null
+  const creado = new Date(ticket.createdAt)
+  if (Number.isNaN(creado.getTime())) return null
+  return Math.max(0, Math.floor((now.getTime() - creado.getTime()) / 86400000))
+}
+
 export type AlertLevel = 'critical' | 'warning' | 'info'
 
 export interface AlertItem {
@@ -269,12 +312,28 @@ export interface AlertItem {
   date: string | null
 }
 
+/**
+ * Todos los campos son OBLIGATORIOS, y eso es el arreglo de un bug real.
+ *
+ * `maintenanceCharges` era opcional con default `[]`. La campana del header
+ * y `/alertas` no lo pasaban y el dashboard sí, así que sin los cobros
+ * `maintenancePeriods()` no encontraba nada que tapara los períodos y
+ * marcaba como VENCIDO todo mantenimiento activo, aunque estuviera al día.
+ * Tres vistas del mismo motor daban tres números distintos, y la que más se
+ * ve — el punto rojo del header — era la que mentía.
+ *
+ * Un default vacío en una entrada de la que depende el resultado no ahorra
+ * trabajo: esconde el olvido. Sin default, olvidarse es un error de
+ * compilación y no una alerta fantasma que nadie sabe de dónde salió.
+ */
 interface AlertInput {
   projects: Project[]
   notes: Note[]
-  tasks?: Task[]
-  /** Opcional: sin los cobros no hay forma de saber qué períodos quedaron impagos. */
-  maintenanceCharges?: MaintenanceCharge[]
+  tasks: Task[]
+  /** Sin los cobros no hay forma de saber qué períodos quedaron impagos. */
+  maintenanceCharges: MaintenanceCharge[]
+  /** Si `11_tickets.sql` no está corrido llega vacío, y no hay alertas. */
+  tickets: Ticket[]
 }
 
 /** dd/mm, que es todo lo que entra en el detalle de una alerta. */
@@ -289,8 +348,9 @@ function shortDay(iso: string): string {
 export function buildAlerts({
   projects,
   notes,
-  tasks = [],
-  maintenanceCharges = [],
+  tasks,
+  maintenanceCharges,
+  tickets,
 }: AlertInput): AlertItem[] {
   const alerts: AlertItem[] = []
 
@@ -421,6 +481,37 @@ export function buildAlerts({
         date: note.reminderDate,
       })
     }
+  }
+
+  // Tickets abiertos.
+  //
+  // Un grado 3 alerta desde el minuto cero: eso significa «hay que verlo
+  // ya». Los grados 2 y 1 no alertan por existir — alertan por quedarse:
+  // a los 7 y a los 30 días. Sin ese umbral la campana quedaría con un
+  // renglón por cada pedido cargado y dejaría de leerse.
+  const umbral: Record<1 | 2 | 3, number> = { 3: 0, 2: 7, 1: 30 }
+
+  for (const ticket of tickets) {
+    if (!isTicketOpen(ticket)) continue
+    const dias = ticketAge(ticket) ?? 0
+    if (dias < umbral[ticket.grade]) continue
+    const project = projects.find((p) => p.id === ticket.projectId)
+    alerts.push({
+      id: `tk-${ticket.id}`,
+      level: ticket.grade === 3 ? 'critical' : ticket.grade === 2 ? 'warning' : 'info',
+      category: 'Tickets',
+      title: `${ticket.kind} sin resolver · ${project?.name ?? 'proyecto eliminado'}`,
+      // `dias === 0` es «menos de 24 horas», no «hoy»: `ticketAge()` mide
+      // períodos corridos, así que un ticket de ayer a las 23:00 todavía da
+      // cero a las 10 de la mañana. Decirle «cargado hoy» sería mentir por
+      // un detalle de redondeo.
+      detail:
+        dias === 0
+          ? `${ticket.title} — hace menos de un día, grado ${ticket.grade}`
+          : `${ticket.title} — ${dias} día(s) abierto, grado ${ticket.grade}`,
+      projectId: ticket.projectId,
+      date: ticket.createdAt,
+    })
   }
 
   const order: Record<AlertLevel, number> = { critical: 0, warning: 1, info: 2 }

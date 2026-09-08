@@ -1,4 +1,9 @@
-import type { Priority, ProjectStatus } from './types'
+import type {
+  Priority,
+  ProjectStatus,
+  TicketGrade,
+  TicketStatus,
+} from './types'
 
 // Tailwind color classes per project status (semantic, subtle glass chips).
 export const statusStyles: Record<ProjectStatus, string> = {
@@ -31,3 +36,19 @@ export const ACTIVE_STATUSES: ProjectStatus[] = [
 ]
 
 export const DELAYED_STATUSES: ProjectStatus[] = ['Esperando al cliente', 'Pausado']
+
+/**
+ * Los tres grados de urgencia de un ticket. Mismo criterio cromático que
+ * `priorityStyles`: gris para lo que puede esperar, ámbar para lo de esta
+ * semana, rojo para lo que hay que mirar ya.
+ */
+export const ticketGradeStyles: Record<TicketGrade, string> = {
+  1: 'bg-muted text-muted-foreground border-border',
+  2: 'bg-amber-400/12 text-amber-300 border-amber-400/25',
+  3: 'bg-destructive/15 text-red-300 border-destructive/30',
+}
+
+export const ticketStatusStyles: Record<TicketStatus, string> = {
+  Abierto: 'bg-neon-blue/10 text-neon-blue border-neon-blue/25',
+  Resuelto: 'bg-neon-green/12 text-neon-green border-neon-green/30',
+}

@@ -17,6 +17,7 @@ import {
   Pencil,
   Server,
   StickyNote,
+  Ticket as TicketIcon,
   User,
   Wrench,
 } from 'lucide-react'
@@ -26,7 +27,11 @@ import { Separator } from '@/components/ui/separator'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty'
-import { PriorityChip, StatusChip } from '@/components/shared/status-chip'
+import {
+  PriorityChip,
+  StatusChip,
+  TicketGradeChip,
+} from '@/components/shared/status-chip'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
 import { LinkedText } from '@/components/shared/linked-text'
@@ -37,14 +42,21 @@ import { EditDevelopmentDialog } from '@/components/proyectos/edit-development-d
 import { EditInfrastructureDialog } from '@/components/proyectos/edit-infrastructure-dialog'
 import { FixedCostsCard } from '@/components/proyectos/fixed-costs-card'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
+import { NewTicketDialog } from '@/components/tickets/new-ticket-dialog'
+import { ResolveTicketDialog } from '@/components/tickets/resolve-ticket-dialog'
 import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
-import { projectFinance, nextMaintenanceCharge } from '@/lib/derive'
+import {
+  isTicketOpen,
+  nextMaintenanceCharge,
+  projectFinance,
+  ticketAge,
+} from '@/lib/derive'
 import { formatDate, formatMoney, relativeDays } from '@/lib/format'
 import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { PROJECT_STATUSES } from '@/lib/types'
-import type { Payment, ProjectStatus } from '@/lib/types'
+import type { Payment, ProjectStatus, Ticket } from '@/lib/types'
 
 export default function ProjectDetailPage() {
   const params = useParams<{ id: string }>()
@@ -57,6 +69,8 @@ export default function ProjectDetailPage() {
     activity,
     tasks,
     maintenanceCharges,
+    tickets,
+    ticketsReady,
     updateProjectStatus,
   } = useStore()
   const [payDialogOpen, setPayDialogOpen] = React.useState(false)
@@ -64,6 +78,7 @@ export default function ProjectDetailPage() {
   const [editOpen, setEditOpen] = React.useState(false)
   const [devOpen, setDevOpen] = React.useState(false)
   const [infraOpen, setInfraOpen] = React.useState(false)
+  const [resolveTarget, setResolveTarget] = React.useState<Ticket | null>(null)
 
   const project = projects.find((p) => p.id === params.id)
 
@@ -96,6 +111,11 @@ export default function ProjectDetailPage() {
   const mnt = project.maintenance
   const nextCharge = nextMaintenanceCharge(project)
   const projectActivity = activity.filter((a) => a.projectId === project.id)
+
+  // Ya vienen ordenados del store (abiertos primero, grado desc), así que
+  // filtrar por proyecto conserva ese orden.
+  const projectTickets = tickets.filter((t) => t.projectId === project.id)
+  const openTickets = projectTickets.filter(isTicketOpen)
   const projectTasks = tasks.filter((t) => t.projectId === project.id)
   const internalTasks = projectTasks.filter((t) => t.kind === 'interno')
   const clientTasks = projectTasks.filter((t) => t.kind === 'cliente')
@@ -233,9 +253,12 @@ export default function ProjectDetailPage() {
       </div>
 
       <Tabs defaultValue="resumen">
-        {/* Seis pestañas son 577px contra 343px de pantalla: el scroll sangra
+        {/* Siete pestañas no entran en 343px de pantalla: el scroll sangra
             hasta el borde para que se vea que hay más a la derecha, y dos
-            etiquetas se acortan para bajar el total. */}
+            etiquetas se acortan para bajar el total. «Tickets» es la última
+            y la más ancha (lleva ícono y un contador que cambia de ancho),
+            así que es la primera que queda fuera de cuadro — a propósito:
+            las que se miran todos los días son las de la izquierda. */}
         <TabsList className="-mx-4 w-[calc(100%+2rem)] justify-start overflow-x-auto px-4 group-data-horizontal/tabs:h-10 lg:mx-0 lg:w-full lg:px-0">
           <TabsTrigger value="resumen" className="flex-none">
             Resumen
@@ -251,6 +274,10 @@ export default function ProjectDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="mantenimiento" className="flex-none">
             Mantenimiento
+          </TabsTrigger>
+          <TabsTrigger value="tickets" className="flex-none">
+            <TicketIcon data-icon="inline-start" />
+            Tickets{openTickets.length ? ` (${openTickets.length})` : ''}
           </TabsTrigger>
           <TabsTrigger value="actividad" className="flex-none">
             Notas
@@ -646,6 +673,85 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         {/* NOTAS Y ACTIVIDAD */}
+        <TabsContent value="tickets" className="mt-4">
+          <DetailCard
+            title="Reclamos y pedidos"
+            icon={TicketIcon}
+            action={
+              ticketsReady ? (
+                <NewTicketDialog
+                  defaultProjectId={project.id}
+                  triggerLabel="Nuevo ticket"
+                  triggerVariant="outline"
+                />
+              ) : null
+            }
+          >
+            {/* Mismo degradado por módulo que el resto del repo: sin la
+                migración corrida no se ofrece un botón que sólo puede
+                terminar en un toast rojo. */}
+            {!ticketsReady ? (
+              <p className="py-2 text-sm text-muted-foreground">
+                Falta correr{' '}
+                <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs">
+                  supabase/11_tickets.sql
+                </code>{' '}
+                para usar los tickets.
+              </p>
+            ) : projectTickets.length === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">
+                Este proyecto no tiene tickets cargados.
+              </p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-white/5">
+                {projectTickets.map((t) => {
+                  const abierto = isTicketOpen(t)
+                  const dias = ticketAge(t)
+                  return (
+                    <li key={t.id} className="flex flex-col gap-1.5 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 text-sm font-medium text-pretty">
+                          {t.title}
+                        </p>
+                        <TicketGradeChip grade={t.grade} short />
+                      </div>
+                      {t.detail ? (
+                        <p className="line-clamp-2 text-xs text-muted-foreground text-pretty">
+                          {t.detail}
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-[11px] text-muted-foreground tabular-nums">
+                          {t.kind} ·{' '}
+                          {abierto
+                            ? dias === 0
+                              ? 'cargado hoy'
+                              : `${dias} día(s) abierto`
+                            : `resuelto el ${formatDate(t.resolvedAt)}`}
+                        </span>
+                        {abierto ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setResolveTarget(t)}
+                          >
+                            Resolver
+                          </Button>
+                        ) : null}
+                      </div>
+                      {!abierto && t.resolution ? (
+                        <p className="text-xs text-muted-foreground text-pretty">
+                          {t.resolution}
+                        </p>
+                      ) : null}
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </DetailCard>
+        </TabsContent>
+
         <TabsContent value="actividad" className="mt-4">
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <DetailCard title="Historial de actividad" icon={Activity}>
@@ -711,6 +817,15 @@ export default function ProjectDetailPage() {
       </Tabs>
 
       <Separator className="opacity-0" />
+
+      {resolveTarget ? (
+        <ResolveTicketDialog
+          key={resolveTarget.id}
+          ticket={resolveTarget}
+          open={!!resolveTarget}
+          onOpenChange={(o) => !o && setResolveTarget(null)}
+        />
+      ) : null}
 
       {editPayTarget ? (
         <EditPaymentDialog

@@ -16,6 +16,8 @@ import type {
   Payment,
   Project,
   Task,
+  Ticket,
+  TicketGrade,
 } from './types'
 
 /** Untyped Supabase row; the mappers below are the typed boundary. */
@@ -242,6 +244,31 @@ export function mapNote(r: Row): Note {
   }
 }
 
+/**
+ * `grade` viene de Postgres como smallint, pero PostgREST lo serializa a
+ * JSON y en el camino puede llegar como string. `Number()` y un clamp al
+ * rango 1-3: un grado fuera de rango es un dato imposible, y si alguna vez
+ * llega, que caiga en el más bajo y no rompa el `Record` de estilos.
+ */
+function grade(v: unknown): TicketGrade {
+  const n = Number(v)
+  return n === 2 || n === 3 ? n : 1
+}
+
+export function mapTicket(r: Row): Ticket {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    kind: r.kind ?? 'Pedido',
+    grade: grade(r.grade),
+    title: str(r.title),
+    detail: str(r.detail),
+    createdAt: r.created_at,
+    resolvedAt: r.resolved_at ?? null,
+    resolution: str(r.resolution),
+  }
+}
+
 export function mapActivity(r: Row): ActivityEntry {
   return {
     id: r.id,
@@ -416,6 +443,18 @@ export function noteToRow(n: Partial<Note>): Row {
     reminderDate: 'reminder_date',
     convertedToProjectId: 'converted_to_project_id',
     projectId: 'project_id',
+  })
+}
+
+export function ticketToRow(t: Partial<Ticket>): Row {
+  return pick(t, {
+    projectId: 'project_id',
+    kind: 'kind',
+    grade: 'grade',
+    title: 'title',
+    detail: 'detail',
+    resolvedAt: 'resolved_at',
+    resolution: 'resolution',
   })
 }
 

@@ -302,6 +302,7 @@ export interface ActivityEntry {
     | 'nota'
     | 'proyecto'
     | 'edición'
+    | 'ticket'
   message: string
   date: string // ISO
 }
@@ -342,4 +343,84 @@ export interface Note {
   convertedToProjectId: string | null
   /** Optional: notes can hang off a project (a meeting, an idea for it). */
   projectId: string | null
+}
+
+// ---------------------------------------------------------------------
+// Tickets: reclamos y pedidos de clientes
+// ---------------------------------------------------------------------
+
+/**
+ * En qué se gastó... no: de qué se trata el ticket. Enum y no texto libre
+ * por el mismo motivo que `ExpenseKind`: en seis meses habría 'reclamo',
+ * 'Reclamo' y 'queja' y la pregunta «¿qué nos piden más?» dejaría de tener
+ * respuesta. Arranca generosa a propósito — agregar un valor después es un
+ * script SQL nuevo.
+ */
+export const TICKET_KINDS = [
+  'Reclamo',
+  'Pedido',
+  'Consulta',
+  'Incidencia',
+  'Mejora',
+  'Otro',
+] as const
+
+export type TicketKind = (typeof TICKET_KINDS)[number]
+
+/**
+ * La urgencia, en tres grados. Es un número y no un enum de Postgres a
+ * propósito: el grado es ORDINAL, y con un número `grade >= 2` significa
+ * lo mismo del lado de TypeScript y del lado de SQL, sin depender del
+ * orden en que se declararon los valores del tipo.
+ *
+ * No reusa `Priority` (Baja/Media/Alta/Crítica) porque son dos escalas
+ * distintas: la de proyectos tiene cuatro peldaños y la de tickets tres.
+ * Mapearlas una contra otra obligaría a decidir si 'Alta' es grado 2 o 3,
+ * y esa decisión estaría escrita en un solo lado del código.
+ */
+export const TICKET_GRADES = [1, 2, 3] as const
+
+export type TicketGrade = (typeof TICKET_GRADES)[number]
+
+export const TICKET_GRADE_LABELS: Record<TicketGrade, string> = {
+  1: 'Grado 1 · Baja',
+  2: 'Grado 2 · Media',
+  3: 'Grado 3 · Urgente',
+}
+
+/** Sólo para el detalle de una tarjeta: el label ya dice el número. */
+export const TICKET_GRADE_HINTS: Record<TicketGrade, string> = {
+  1: 'Sin apuro',
+  2: 'Para esta semana',
+  3: 'Hay que verlo ya',
+}
+
+export const TICKET_STATUSES = ['Abierto', 'Resuelto'] as const
+
+export type TicketStatus = (typeof TICKET_STATUSES)[number]
+
+/**
+ * Un reclamo, pedido o consulta de un cliente, siempre contra un proyecto
+ * (el cliente sale del proyecto: `project.clientId`).
+ *
+ * **No hay columna `status`.** El estado se lee de `resolvedAt`:
+ * null = abierto, con fecha = resuelto. Es la misma decisión que en
+ * `FixedExpense` y por el mismo motivo: un `status` al lado de un
+ * `resolvedAt` son dos formas de decir lo mismo y una de las dos siempre
+ * termina mintiendo — un ticket marcado 'Resuelto' sin fecha, o con fecha
+ * y todavía 'Abierto'. Resolver es poner la fecha; reabrir es sacarla.
+ * `ticketStatus()` en `lib/derive.ts` hace la lectura.
+ */
+export interface Ticket {
+  id: string
+  projectId: string
+  kind: TicketKind
+  grade: TicketGrade
+  title: string
+  detail: string
+  createdAt: string // ISO
+  /** Null = abierto. Con fecha = resuelto. Es el único estado que se guarda. */
+  resolvedAt: string | null // ISO
+  /** Qué se hizo para resolverlo. Vacío mientras está abierto. */
+  resolution: string
 }
