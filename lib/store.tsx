@@ -23,9 +23,11 @@ import {
   mapTask,
   movementToRow,
   noteToRow,
+  mapSeguimiento,
   mapTicket,
   paymentToRow,
   projectToRow,
+  seguimientoToRow,
   ticketToRow,
 } from './mappers'
 import { formatMoney, todayIso } from './format'
@@ -44,6 +46,7 @@ import type {
   Payment,
   Project,
   ProjectStatus,
+  Seguimiento,
   Task,
   TaskKind,
   Ticket,
@@ -88,12 +91,19 @@ interface StoreValue {
    * no se guarda: `resolvedAt` null = abierto. Ver `lib/types.ts`.
    */
   tickets: Ticket[]
+  /**
+   * Los acercamientos comerciales. Un renglón por CONTACTO; el hilo de un
+   * prospecto y su estado se derivan con `agruparSeguimientos()`.
+   */
+  seguimientos: Seguimiento[]
   /** False until `08_caja.sql` has been run on the database. */
   cajaReady: boolean
   /** False mientras no se haya corrido `10_gastos.sql`. Mismo degradado. */
   gastosReady: boolean
   /** False mientras no se haya corrido `11_tickets.sql`. Mismo degradado. */
   ticketsReady: boolean
+  /** False mientras no se haya corrido `12_seguimientos.sql`. Ídem. */
+  seguimientosReady: boolean
   refresh: () => Promise<void>
 
   // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
@@ -187,6 +197,21 @@ interface StoreValue {
   reopenTicket: (id: string) => Promise<boolean>
   deleteTicket: (id: string) => Promise<boolean>
 
+  // seguimientos
+  //
+  // No hay `setEstadoProspecto`: el estado de un prospecto es el del último
+  // contacto, así que cambiarlo es cargar un contacto nuevo — que es lo que
+  // de verdad pasó. Un setter dejaría mover el estado sin que quede registro
+  // de por qué se movió.
+  addSeguimiento: (
+    seguimiento: Omit<Seguimiento, 'id' | 'createdAt' | 'prospectoKey'>,
+  ) => Promise<boolean>
+  updateSeguimiento: (
+    id: string,
+    patch: Partial<Seguimiento>,
+  ) => Promise<boolean>
+  deleteSeguimiento: (id: string) => Promise<boolean>
+
   // maintenance
   activateMaintenance: (
     id: string,
@@ -276,9 +301,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [movements, setMovements] = React.useState<MoneyMovement[]>([])
   const [fixedExpenses, setFixedExpenses] = React.useState<FixedExpense[]>([])
   const [tickets, setTickets] = React.useState<Ticket[]>([])
+  const [seguimientos, setSeguimientos] = React.useState<Seguimiento[]>([])
   const [cajaReady, setCajaReady] = React.useState(true)
   const [gastosReady, setGastosReady] = React.useState(true)
   const [ticketsReady, setTicketsReady] = React.useState(true)
+  const [seguimientosReady, setSeguimientosReady] = React.useState(true)
 
   /**
    * Surfaces the failure to the user and keeps it out of the happy path.
@@ -300,7 +327,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk] = await Promise.all([
+      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg] = await Promise.all([
         supabase
           .from('projects')
           .select(PROJECT_SELECT)
@@ -346,6 +373,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .order('resolved_at', { ascending: false, nullsFirst: true })
           .order('grade', { ascending: false })
           .order('created_at', { ascending: false }),
+        // Por prospecto y, adentro, el contacto más reciente primero: es el
+        // mismo orden que espera `agruparSeguimientos()`.
+        supabase
+          .from('seguimientos')
+          .select('*')
+          .order('prospecto_key')
+          .order('contacted_on', { ascending: false })
+          .order('created_at', { ascending: false }),
       ])
 
       // Caja is the newest module: if 08_caja.sql hasn't been run yet its
@@ -371,6 +406,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const ticketsMissing = missing(tk.error)
       setTicketsReady(!ticketsMissing)
 
+      const seguimientosMissing = missing(sg.error)
+      setSeguimientosReady(!seguimientosMissing)
+
       const firstError =
         p.error ||
         c.error ||
@@ -381,7 +419,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         mc.error ||
         (cajaMissing ? null : acc.error || mov.error) ||
         (gastosMissing ? null : fe.error) ||
-        (ticketsMissing ? null : tk.error)
+        (ticketsMissing ? null : tk.error) ||
+        (seguimientosMissing ? null : sg.error)
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -395,6 +434,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setMovements((mov.data ?? []).map(mapMovement))
       setFixedExpenses((fe.data ?? []).map(mapFixedExpense))
       setTickets((tk.data ?? []).map(mapTicket))
+      setSeguimientos((sg.data ?? []).map(mapSeguimiento))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -1452,6 +1492,81 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, fail],
   )
 
+  // -------------------------------------------------------------------
+  // Seguimientos
+  //
+  // No se reordena en memoria como los tickets: acá el orden que importa es
+  // el de los GRUPOS, y ese lo arma `agruparSeguimientos()` en cada render a
+  // partir de la lista. Alcanza con que la lista tenga los datos correctos.
+  // -------------------------------------------------------------------
+  const addSeguimiento = React.useCallback(
+    async (
+      seguimiento: Omit<Seguimiento, 'id' | 'createdAt' | 'prospectoKey'>,
+    ) => {
+      try {
+        const { data, error } = await supabase
+          .from('seguimientos')
+          .insert(seguimientoToRow(seguimiento))
+          .select()
+          .single()
+        if (error) throw error
+        setSeguimientos((prev) => [mapSeguimiento(data), ...prev])
+        await logActivity({
+          projectId: null,
+          type: 'nota',
+          message: `Seguimiento: ${seguimiento.kind.toLowerCase()} con ${seguimiento.prospecto}`,
+        })
+        return true
+      } catch (e) {
+        fail('guardar el seguimiento', e)
+        return false
+      }
+    },
+    [supabase, logActivity, fail],
+  )
+
+  const updateSeguimiento = React.useCallback(
+    async (id: string, patch: Partial<Seguimiento>) => {
+      try {
+        const row = seguimientoToRow(patch)
+        if (Object.keys(row).length === 0) return true
+        const { data, error } = await supabase
+          .from('seguimientos')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        setSeguimientos((prev) =>
+          prev.map((s) => (s.id === id ? mapSeguimiento(data) : s)),
+        )
+        return true
+      } catch (e) {
+        fail('guardar el seguimiento', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
+  const deleteSeguimiento = React.useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase
+          .from('seguimientos')
+          .delete()
+          .eq('id', id)
+        if (error) throw error
+        setSeguimientos((prev) => prev.filter((s) => s.id !== id))
+        return true
+      } catch (e) {
+        fail('eliminar el seguimiento', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
   // Sin memoizar, cada render del provider arma un objeto nuevo y despierta
   // a todas las pantallas que leen el store aunque no haya cambiado un dato.
   const value = React.useMemo<StoreValue>(
@@ -1469,9 +1584,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       movements,
       fixedExpenses,
       tickets,
+      seguimientos,
       cajaReady,
       gastosReady,
       ticketsReady,
+      seguimientosReady,
       refresh,
       addProject,
       updateProject,
@@ -1508,6 +1625,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       resolveTicket,
       reopenTicket,
       deleteTicket,
+      addSeguimiento,
+      updateSeguimiento,
+      deleteSeguimiento,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,
@@ -1526,9 +1646,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       movements,
       fixedExpenses,
       tickets,
+      seguimientos,
       cajaReady,
       gastosReady,
       ticketsReady,
+      seguimientosReady,
       refresh,
       addProject,
       updateProject,
@@ -1565,6 +1687,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       resolveTicket,
       reopenTicket,
       deleteTicket,
+      addSeguimiento,
+      updateSeguimiento,
+      deleteSeguimiento,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,

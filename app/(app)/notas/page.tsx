@@ -6,6 +6,8 @@ import Link from 'next/link'
 import {
   ArrowUpRight,
   Bell,
+  CalendarClock,
+  Handshake,
   Lightbulb,
   Pencil,
   Search,
@@ -31,19 +33,29 @@ import { LinkedText } from '@/components/shared/linked-text'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
 import { PriorityChip } from '@/components/shared/status-chip'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
 import { EditNoteDialog } from '@/components/notas/edit-note-dialog'
+import { SeguimientoDialog } from '@/components/seguimientos/seguimiento-dialog'
+import { SeguimientosPanel } from '@/components/seguimientos/seguimientos-panel'
+import { agruparSeguimientos } from '@/lib/derive'
+import { SEGUIMIENTO_ESTADOS } from '@/lib/types'
 import { useStore } from '@/lib/store'
 import type { Note } from '@/lib/types'
 import { formatDate, relativeDays, daysUntil } from '@/lib/format'
 import { NOTE_CATEGORIES } from '@/lib/types'
 import { cn } from '@/lib/utils'
 
+type Vista = 'notas' | 'seguimientos'
+
 export default function NotasPage() {
   const router = useRouter()
-  const { notes, addNote, deleteNote, convertNoteToProject } = useStore()
+  const { notes, addNote, deleteNote, convertNoteToProject, seguimientos } =
+    useStore()
+  const [vista, setVista] = React.useState<Vista>('notas')
   const [query, setQuery] = React.useState('')
   const [categoryFilter, setCategoryFilter] = React.useState('todas')
+  const [estadoFilter, setEstadoFilter] = React.useState('todos')
   const [editTarget, setEditTarget] = React.useState<Note | null>(null)
 
   const filtered = notes.filter((n) => {
@@ -66,6 +78,24 @@ export default function NotasPage() {
   const ideas = notes.filter(
     (n) => n.category === 'Idea' || n.category === 'Proyecto potencial',
   ).length
+
+  // El estado de cada prospecto sale de su contacto más reciente, así que
+  // los conteos se leen del agrupado y no de las filas sueltas: contar filas
+  // daría «tres pelotas nuestras» cuando son tres contactos del mismo
+  // prospecto.
+  const prospectos = agruparSeguimientos(seguimientos)
+  const pelotaNuestra = prospectos.filter(
+    (g) => g.estado === 'Pelota nuestra',
+  ).length
+  const esperandoRespuesta = prospectos.filter(
+    (g) => g.estado === 'Pelota de ellos',
+  ).length
+  const porRetomar = prospectos.filter(
+    (g) =>
+      g.estado === 'Pelota nuestra' &&
+      (daysUntil(g.proximoContacto) ?? 99) <= 7,
+  ).length
+  const ganados = prospectos.filter((g) => g.estado === 'Ganado').length
 
   async function handleConvert(noteId: string, title: string) {
     const newId = await convertNoteToProject(noteId)
@@ -103,45 +133,107 @@ export default function NotasPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Notas e ideas"
-        description="Ideas de producto, recordatorios, reuniones y pendientes del equipo."
+        title="Notas y seguimientos"
+        description="Ideas y pendientes del equipo, y cómo viene cada acercamiento comercial."
       >
-        <NewNoteDialog />
+        {vista === 'notas' ? <NewNoteDialog /> : <SeguimientoDialog />}
       </PageHeader>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Total notas" value={notes.length} icon={Lightbulb} accent="blue" />
-        <StatCard label="Ideas y oportunidades" value={ideas} accent="violet" />
-        <StatCard
-          label="Recordatorios próximos"
-          value={withReminder}
-          icon={Bell}
-          accent={withReminder ? 'green' : 'neutral'}
-        />
-        <StatCard label="Convertidas en proyecto" value={converted} accent="neutral" />
-      </div>
+      <Tabs value={vista} onValueChange={(v) => setVista(v as Vista)}>
+        <TabsList>
+          <TabsTrigger value="notas" className="flex-none">
+            <Lightbulb data-icon="inline-start" />
+            Notas e ideas ({notes.length})
+          </TabsTrigger>
+          <TabsTrigger value="seguimientos" className="flex-none">
+            <Handshake data-icon="inline-start" />
+            Seguimientos ({prospectos.length})
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <InputGroup className="sm:w-64">
-          <InputGroupInput
-            placeholder="Buscar por título, contenido o etiqueta..."
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <InputGroupAddon>
-            <Search />
-          </InputGroupAddon>
-        </InputGroup>
-        <SimpleSelect
-          value={categoryFilter}
-          onValueChange={setCategoryFilter}
-          className="sm:w-52"
-          options={[
-            { value: 'todas', label: 'Todas las categorías' },
-            ...NOTE_CATEGORIES.map((c) => ({ value: c, label: c })),
-          ]}
-        />
-      </div>
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {vista === 'notas' ? (
+            <>
+              <StatCard label="Total notas" value={notes.length} icon={Lightbulb} accent="blue" />
+              <StatCard label="Ideas y oportunidades" value={ideas} accent="violet" />
+              <StatCard
+                label="Recordatorios próximos"
+                value={withReminder}
+                icon={Bell}
+                accent={withReminder ? 'green' : 'neutral'}
+              />
+              <StatCard label="Convertidas en proyecto" value={converted} accent="neutral" />
+            </>
+          ) : (
+            <>
+              <StatCard
+                label="La pelota es nuestra"
+                value={pelotaNuestra}
+                icon={Handshake}
+                accent={pelotaNuestra ? 'blue' : 'neutral'}
+                hint="Dependen de que hagamos algo"
+              />
+              <StatCard
+                label="Esperando respuesta"
+                value={esperandoRespuesta}
+                accent="neutral"
+                hint="No hay nada que hacer"
+              />
+              <StatCard
+                label="Para retomar"
+                value={porRetomar}
+                icon={CalendarClock}
+                accent={porRetomar ? 'green' : 'neutral'}
+                hint="En los próximos 7 días"
+              />
+              <StatCard label="Ganados" value={ganados} accent="violet" />
+            </>
+          )}
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <InputGroup className="sm:w-64">
+            <InputGroupInput
+              placeholder={
+                vista === 'notas'
+                  ? 'Buscar por título, contenido o etiqueta...'
+                  : 'Buscar prospecto, participantes o lo hablado...'
+              }
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            <InputGroupAddon>
+              <Search />
+            </InputGroupAddon>
+          </InputGroup>
+          {vista === 'notas' ? (
+            <SimpleSelect
+              value={categoryFilter}
+              onValueChange={setCategoryFilter}
+              className="sm:w-52"
+              options={[
+                { value: 'todas', label: 'Todas las categorías' },
+                ...NOTE_CATEGORIES.map((c) => ({ value: c, label: c })),
+              ]}
+            />
+          ) : (
+            <SimpleSelect
+              value={estadoFilter}
+              onValueChange={setEstadoFilter}
+              className="sm:w-52"
+              options={[
+                { value: 'todos', label: 'Todos los estados' },
+                ...SEGUIMIENTO_ESTADOS.map((e) => ({ value: e, label: e })),
+              ]}
+            />
+          )}
+        </div>
+
+        <TabsContent value="seguimientos" className="mt-4">
+          <SeguimientosPanel query={query} estadoFilter={estadoFilter} />
+        </TabsContent>
+
+        <TabsContent value="notas" className="mt-4">
 
       {filtered.length === 0 ? (
         <Empty className="glass rounded-2xl">
@@ -261,6 +353,8 @@ export default function NotasPage() {
           })}
         </div>
       )}
+        </TabsContent>
+      </Tabs>
 
       {editTarget ? (
         <EditNoteDialog

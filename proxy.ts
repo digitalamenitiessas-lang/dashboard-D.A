@@ -45,14 +45,43 @@ export async function proxy(request: NextRequest) {
   } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
-  const isLoginRoute = pathname.startsWith('/login')
-  const isPasswordRoute = pathname.startsWith(RUTA_CAMBIAR_PASSWORD)
 
+  /**
+   * La ruta exacta, o algo colgando de ella. `startsWith` a secas daba por
+   * buenas `/loginfalso` y `/cambiar-contrasenaa`, que no existen y por lo
+   * tanto caían en el 404 pelado de Next — sin barra lateral y, en el modo
+   * forzado, sin ningún camino de vuelta salvo escribir la URL a mano.
+   */
+  const esRuta = (ruta: string) =>
+    pathname === ruta || pathname.startsWith(`${ruta}/`)
+
+  const isLoginRoute = esRuta('/login')
+  const isPasswordRoute = esRuta(RUTA_CAMBIAR_PASSWORD)
+
+  /**
+   * Redirigir SIN perder la sesión.
+   *
+   * `getUser()` no sólo lee: cuando el access token está vencido lo rota
+   * contra GoTrue y deja los `Set-Cookie` nuevos en `response`, vía el
+   * `setAll` de arriba. Un `NextResponse.redirect()` recién creado no tiene
+   * nada de eso, así que devolverlo pelado tira los tokens recién emitidos
+   * —y el refresh token viejo ya quedó marcado como usado del lado del
+   * servidor—: el resultado es una sesión que se cae sola, justamente el
+   * síntoma que el comentario de arriba advierte no provocar.
+   *
+   * Se notaba poco cuando el único redirect era el de /login, porque el que
+   * lo comía ya estaba deslogueado. Con el portero de contraseña, en cambio,
+   * TODA la navegación de alguien que todavía no la cambió es un redirect.
+   */
   const irA = (destino: string) => {
     const url = request.nextUrl.clone()
     url.pathname = destino
     url.search = ''
-    return NextResponse.redirect(url)
+    const redirect = NextResponse.redirect(url)
+    for (const cookie of response.cookies.getAll()) {
+      redirect.cookies.set(cookie)
+    }
+    return redirect
   }
 
   if (!user) {

@@ -424,3 +424,80 @@ export interface Ticket {
   /** Qué se hizo para resolverlo. Vacío mientras está abierto. */
   resolution: string
 }
+
+// ---------------------------------------------------------------------
+// Seguimientos: los acercamientos comerciales antes de que haya proyecto
+// ---------------------------------------------------------------------
+
+export const SEGUIMIENTO_KINDS = [
+  'Reunión',
+  'Llamada',
+  'Mail',
+  'WhatsApp',
+  'Visita',
+  'Otro',
+] as const
+
+export type SeguimientoKind = (typeof SEGUIMIENTO_KINDS)[number]
+
+/**
+ * Cómo quedó la cosa DESPUÉS de este contacto. No es un atributo del
+ * prospecto sino de cada contacto, y el estado del prospecto se lee del
+ * contacto más reciente (`seguimientoPorProspecto()` en `lib/derive.ts`).
+ *
+ * Guardarlo también a nivel prospecto sería una segunda fuente para el mismo
+ * dato: alcanzaría con cargar una reunión y olvidarse de tocar el estado de
+ * arriba para que la pantalla dijera «esperamos respuesta» sobre algo que se
+ * cerró la semana pasada.
+ *
+ * Los dos primeros son la pregunta que importa todos los días: de quién es
+ * la pelota. Es la distinción que pidió el usuario y la que decide si algo
+ * alerta o no — si están esperando ellos, no hay nada que hacer más que
+ * esperar, y una alerta ahí sería ruido.
+ */
+export const SEGUIMIENTO_ESTADOS = [
+  'Pelota nuestra',
+  'Pelota de ellos',
+  'Ganado',
+  'Perdido',
+] as const
+
+export type SeguimientoEstado = (typeof SEGUIMIENTO_ESTADOS)[number]
+
+/** Los dos estados en los que la negociación sigue viva. */
+export const SEGUIMIENTO_ABIERTOS: SeguimientoEstado[] = [
+  'Pelota nuestra',
+  'Pelota de ellos',
+]
+
+/**
+ * Un contacto con un prospecto: la reunión, la llamada, el mail.
+ *
+ * `prospecto` es texto libre y no un `clientId` — decisión tomada a
+ * conciencia: anotar una reunión con alguien de quien todavía no se sabe
+ * nada no debería exigir crearle una ficha antes. El costo es que la misma
+ * empresa se puede escribir de tres formas, y por eso el agrupado NO usa
+ * este campo crudo sino `prospectoKey`, que la base deriva normalizando.
+ */
+export interface Seguimiento {
+  id: string
+  prospecto: string
+  /**
+   * `prospecto` normalizado (minúsculas, sin espacios de más). Lo genera la
+   * base, así que vale igual para lo que se carga por la app y para lo que
+   * alguien inserte por SQL. Es la clave con la que se agrupa; nunca se
+   * muestra. NO saca acentos: eso necesitaría la extensión `unaccent`, que
+   * no está instalada — «Mediterráneo» y «Mediterraneo» todavía se separan.
+   */
+  prospectoKey: string
+  contactedOn: string // ISO date
+  kind: SeguimientoKind
+  /** Quiénes estuvieron, de los dos lados. Texto libre. */
+  attendees: string
+  /** Qué se habló y cómo fue. */
+  summary: string
+  estado: SeguimientoEstado
+  /** Cuándo hay que retomar. Null = no quedó fecha. */
+  nextContactOn: string | null // ISO date
+  createdAt: string
+}

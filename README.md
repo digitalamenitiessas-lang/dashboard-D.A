@@ -1,7 +1,7 @@
 # Digital Amenities · Centro de Control
 
 Dashboard interno de gestión: proyectos y clientes, cobros, mantenimientos,
-gastos, caja, infraestructura, tickets, notas y alertas. Los **proyectos** son
+gastos, caja, infraestructura, tickets, notas, seguimientos y alertas. Los **proyectos** son
 el núcleo del sistema y todo lo demás cuelga de ellos.
 
 ## Stack
@@ -49,9 +49,11 @@ de Supabase, en orden:
 | `08_caja.sql` | Cuentas y movimientos de dinero |
 | `10_gastos.sql` | Gastos fijos y en qué se va la plata |
 | `11_tickets.sql` | Reclamos y pedidos de clientes |
+| `12_seguimientos.sql` | Acercamientos comerciales con prospectos |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
-Para una instalación nueva alcanza con **03**, **06**, **08**, **10** y **11**:
+Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11** y
+**12**:
 el 03 ya crea `payments` con la forma final. El **07** es la migración para una
 base creada antes de ese cambio. Del 08 en adelante son todos idempotentes: se
 pueden correr de nuevo sin romper nada.
@@ -100,6 +102,38 @@ update auth.users
        jsonb_build_object('password_changed_at', now())
  where email = 'la-cuenta@ejemplo.com';
 ```
+
+#### Al resetearle la contraseña a alguien, borrale la marca
+
+La marca se escribe una vez y no se limpia sola, así que contesta «¿alguna vez
+eligió una contraseña propia?» y no «¿la que usa ahora es propia?». Si le
+reseteás la contraseña a alguien desde *Authentication → Users*, esa persona
+entra con la provisoria nueva y **no** se le vuelve a pedir el cambio. El paso
+que acompaña a todo reseteo:
+
+```sql
+update auth.users
+   set raw_user_meta_data = raw_user_meta_data - 'password_changed_at'
+ where email = 'quien-se-la-olvido@ejemplo.com';
+```
+
+#### Migrar desde la cuenta compartida: hacelo ANTES de deployar
+
+Si venías con una sola cuenta para todo el equipo, el orden importa y no es
+obvio. Los cuatro celulares tienen esa misma sesión abierta; apenas se
+deploya, los cuatro rebotan a la pantalla de cambio con la **misma** cuenta.
+El primero que elige una contraseña se la cambia a todos, y los otros tres
+quedan afuera con una contraseña que ya no existe.
+
+El orden que evita eso:
+
+1. Creá primero las cuatro cuentas individuales, con sus provisorias.
+2. Repartí las credenciales y esperá a que los cuatro entren y elijan la suya.
+3. Recién ahí borrá —o cambiale la contraseña a— la cuenta compartida.
+
+Si ya deployaste y pasó, no se rompió nada: entrá al panel, reseteales la
+contraseña a los que quedaron afuera y borrales la marca con el `update` de
+arriba.
 
 > Lo que esto **no** es: un candado. `user_metadata` lo puede escribir el
 > propio usuario con la anon key, así que alguien decidido puede marcarse solo
@@ -177,6 +211,23 @@ supabase/         Scripts SQL versionados
   propio no puede tener cliente. La ruta `/clientes` sobrevive sólo como
   redirección, porque esa URL está en marcadores y en la pantalla de inicio de
   quien instaló la PWA.
+- **Un seguimiento es un CONTACTO, no un prospecto.** Cada reunión, llamada o
+  mail es un renglón de `seguimientos`; el hilo de un prospecto es el conjunto
+  de sus contactos y su estado sale del más reciente (`agruparSeguimientos()`
+  en `lib/derive.ts`). No hay tabla de prospectos con su propio estado: sería
+  una segunda fuente para el mismo dato, y alcanzaría con cargar una reunión y
+  olvidarse de tocar el estado de arriba para que la pantalla dijera «esperamos
+  respuesta» sobre algo que se cerró la semana pasada.
+- **De qué lado está la pelota decide si algo alerta.** Sólo un prospecto en
+  «Pelota nuestra» y con fecha para retomar entra al motor de alertas. Si están
+  esperando ellos no hay nada que hacer más que esperar, y avisar ahí haría que
+  la campana dejara de significar «hay algo para hacer».
+- **El prospecto es texto libre, y por eso el agrupado no lo usa crudo.** Usa
+  `prospecto_key`, una columna GENERADA por Postgres que baja a minúsculas y
+  colapsa espacios — así vale igual para lo que carga la pantalla y para lo que
+  se inserte por SQL. No saca acentos (haría falta la extensión `unaccent`), así
+  que «Mediterráneo» y «Mediterraneo» siguen siendo dos. La defensa contra eso
+  es el autocompletado del diálogo, que ofrece los nombres ya cargados.
 - **Un ticket no tiene columna `status`.** El estado se lee de `resolved_at`:
   null es abierto, con fecha es resuelto. Resolver es poner la fecha y reabrir
   es sacarla; `ticketStatus()` en `lib/derive.ts` hace la lectura y es el único

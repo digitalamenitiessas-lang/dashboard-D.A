@@ -54,6 +54,7 @@ export default function DashboardPage() {
     maintenanceCharges,
     tickets,
     ticketsReady,
+    seguimientos,
   } = useStore()
 
   const finances = projects.map((p) =>
@@ -113,6 +114,7 @@ export default function DashboardPage() {
     tasks,
     maintenanceCharges,
     tickets,
+    seguimientos,
   }).slice(0, 5)
 
   const recentProjects = [...projects]
