@@ -42,6 +42,14 @@ const MARCA = 'password_changed_at'
  *    derecho, el error posible sería dejar viva para siempre una contraseña
  *    provisoria que viajó por WhatsApp.
  *
+ * Lo que esto TAMPOCO cubre: un reseteo hecho desde el panel. La marca se
+ * escribe una vez y no se limpia nunca, así que la pregunta que contesta es
+ * «¿alguna vez eligió una contraseña propia?» y no «¿la que está usando ahora
+ * es propia?». Si el dueño le resetea la contraseña a alguien desde
+ * Authentication → Users, esa persona entra con la provisoria nueva y NO se
+ * le vuelve a pedir el cambio. El README trae el UPDATE de una línea para
+ * borrarle la marca al resetear; es el paso que acompaña a todo reseteo.
+ *
  * Lo que esto NO es: un candado. `user_metadata` lo puede escribir el propio
  * usuario con la anon key, así que alguien con ganas puede marcarse solo y
  * saltear la pantalla. Lo único que se saltea es su propio cambio de

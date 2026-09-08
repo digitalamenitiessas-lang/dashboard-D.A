@@ -101,6 +101,38 @@ update auth.users
  where email = 'la-cuenta@ejemplo.com';
 ```
 
+#### Al resetearle la contraseña a alguien, borrale la marca
+
+La marca se escribe una vez y no se limpia sola, así que contesta «¿alguna vez
+eligió una contraseña propia?» y no «¿la que usa ahora es propia?». Si le
+reseteás la contraseña a alguien desde *Authentication → Users*, esa persona
+entra con la provisoria nueva y **no** se le vuelve a pedir el cambio. El paso
+que acompaña a todo reseteo:
+
+```sql
+update auth.users
+   set raw_user_meta_data = raw_user_meta_data - 'password_changed_at'
+ where email = 'quien-se-la-olvido@ejemplo.com';
+```
+
+#### Migrar desde la cuenta compartida: hacelo ANTES de deployar
+
+Si venías con una sola cuenta para todo el equipo, el orden importa y no es
+obvio. Los cuatro celulares tienen esa misma sesión abierta; apenas se
+deploya, los cuatro rebotan a la pantalla de cambio con la **misma** cuenta.
+El primero que elige una contraseña se la cambia a todos, y los otros tres
+quedan afuera con una contraseña que ya no existe.
+
+El orden que evita eso:
+
+1. Creá primero las cuatro cuentas individuales, con sus provisorias.
+2. Repartí las credenciales y esperá a que los cuatro entren y elijan la suya.
+3. Recién ahí borrá —o cambiale la contraseña a— la cuenta compartida.
+
+Si ya deployaste y pasó, no se rompió nada: entrá al panel, reseteales la
+contraseña a los que quedaron afuera y borrales la marca con el `update` de
+arriba.
+
 > Lo que esto **no** es: un candado. `user_metadata` lo puede escribir el
 > propio usuario con la anon key, así que alguien decidido puede marcarse solo
 > y saltear la pantalla. Lo único que se saltea es su propio cambio de
