@@ -1,6 +1,7 @@
 import type {
   Priority,
   ProjectStatus,
+  SeguimientoEstado,
   TicketGrade,
   TicketStatus,
 } from './types'
@@ -51,4 +52,16 @@ export const ticketGradeStyles: Record<TicketGrade, string> = {
 export const ticketStatusStyles: Record<TicketStatus, string> = {
   Abierto: 'bg-neon-blue/10 text-neon-blue border-neon-blue/25',
   Resuelto: 'bg-neon-green/12 text-neon-green border-neon-green/30',
+}
+
+/**
+ * De qué lado está la pelota. El ámbar es para lo que depende de nosotros
+ * —lo único sobre lo que se puede actuar hoy— y el azul para la espera, que
+ * no pide nada. Verde y gris cierran.
+ */
+export const seguimientoEstadoStyles: Record<SeguimientoEstado, string> = {
+  'Pelota nuestra': 'bg-amber-400/12 text-amber-300 border-amber-400/25',
+  'Pelota de ellos': 'bg-neon-blue/10 text-neon-blue border-neon-blue/25',
+  Ganado: 'bg-neon-green/12 text-neon-green border-neon-green/30',
+  Perdido: 'bg-muted text-muted-foreground border-border',
 }

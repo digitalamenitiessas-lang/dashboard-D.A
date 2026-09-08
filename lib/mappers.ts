@@ -15,6 +15,7 @@ import type {
   Note,
   Payment,
   Project,
+  Seguimiento,
   Task,
   Ticket,
   TicketGrade,
@@ -269,6 +270,29 @@ export function mapTicket(r: Row): Ticket {
   }
 }
 
+export function mapSeguimiento(r: Row): Seguimiento {
+  return {
+    id: r.id,
+    prospecto: str(r.prospecto),
+    // La genera la base. Si por lo que sea no vino, se deriva acá con la
+    // MISMA regla: un agrupado que se cae a un string vacío juntaría todos
+    // los prospectos en un solo montón.
+    prospectoKey: str(r.prospecto_key) || normalizarProspecto(str(r.prospecto)),
+    contactedOn: r.contacted_on,
+    kind: r.kind ?? 'Reunión',
+    attendees: str(r.attendees),
+    summary: str(r.summary),
+    estado: r.estado ?? 'Pelota nuestra',
+    nextContactOn: r.next_contact_on ?? null,
+    createdAt: r.created_at,
+  }
+}
+
+/** Espejo exacto de la columna generada `seguimientos.prospecto_key`. */
+export function normalizarProspecto(valor: string): string {
+  return valor.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
 export function mapActivity(r: Row): ActivityEntry {
   return {
     id: r.id,
@@ -455,6 +479,20 @@ export function ticketToRow(t: Partial<Ticket>): Row {
     detail: 'detail',
     resolvedAt: 'resolved_at',
     resolution: 'resolution',
+  })
+}
+
+export function seguimientoToRow(s: Partial<Seguimiento>): Row {
+  // `prospectoKey` NO va: es una columna generada y Postgres rechaza que
+  // alguien le escriba encima.
+  return pick(s, {
+    prospecto: 'prospecto',
+    contactedOn: 'contacted_on',
+    kind: 'kind',
+    attendees: 'attendees',
+    summary: 'summary',
+    estado: 'estado',
+    nextContactOn: 'next_contact_on',
   })
 }
 

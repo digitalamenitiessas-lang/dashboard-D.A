@@ -13,6 +13,8 @@ import type {
   Note,
   Payment,
   Project,
+  Seguimiento,
+  SeguimientoEstado,
   Task,
   Ticket,
   TicketStatus,
@@ -300,6 +302,88 @@ export function ticketAge(ticket: Ticket, now = new Date()): number | null {
   return Math.max(0, Math.floor((now.getTime() - creado.getTime()) / 86400000))
 }
 
+// ---------------------------------------------------------------------
+// Seguimientos
+// ---------------------------------------------------------------------
+
+export interface ProspectoAgrupado {
+  /** La clave normalizada con la que se agrupó. No se muestra. */
+  key: string
+  /** El nombre TAL COMO se escribió la última vez. Ver abajo. */
+  prospecto: string
+  /** Todos sus contactos, del más reciente al más viejo. */
+  contactos: Seguimiento[]
+  /** El más reciente: es el que define el estado del prospecto. */
+  ultimo: Seguimiento
+  estado: SeguimientoEstado
+  /** Del último contacto. Null = no quedó fecha para retomar. */
+  proximoContacto: string | null
+}
+
+/**
+ * Junta los contactos por prospecto y deja cada grupo listo para mostrar.
+ *
+ * El estado del prospecto NO se guarda en ningún lado: sale del contacto
+ * más reciente. Es la misma regla que en `fixed_expenses` y en `tickets` —
+ * si se guardara aparte, alcanzaría con cargar una reunión y olvidarse de
+ * actualizar el estado de arriba para que la pantalla dijera «esperamos
+ * respuesta» sobre algo que se cerró la semana pasada.
+ *
+ * El nombre que se muestra es el de la ÚLTIMA vez que se escribió, no el de
+ * la primera: si alguien lo cargó mal y después lo corrigió, la corrección
+ * es la que gana. Como el agrupado va por `prospectoKey`, las dos grafías
+ * caen igual en el mismo grupo y no se parte en dos.
+ */
+export function agruparSeguimientos(
+  seguimientos: Seguimiento[],
+): ProspectoAgrupado[] {
+  const porKey = new Map<string, Seguimiento[]>()
+  for (const s of seguimientos) {
+    const lista = porKey.get(s.prospectoKey)
+    if (lista) lista.push(s)
+    else porKey.set(s.prospectoKey, [s])
+  }
+
+  const grupos: ProspectoAgrupado[] = []
+  for (const [key, lista] of porKey) {
+    const contactos = [...lista].sort((a, b) => {
+      const porFecha = b.contactedOn.localeCompare(a.contactedOn)
+      // Dos contactos el mismo día: desempata el orden de carga, si no el
+      // «último» sería el que la base devolvió primero, o sea al azar.
+      return porFecha !== 0 ? porFecha : b.createdAt.localeCompare(a.createdAt)
+    })
+    const ultimo = contactos[0]
+    grupos.push({
+      key,
+      prospecto: ultimo.prospecto,
+      contactos,
+      ultimo,
+      estado: ultimo.estado,
+      proximoContacto: ultimo.nextContactOn,
+    })
+  }
+
+  // Primero lo que hay que hacer, después lo que espera, al final lo
+  // cerrado. Dentro de cada bloque, lo más urgente arriba.
+  const peso: Record<SeguimientoEstado, number> = {
+    'Pelota nuestra': 0,
+    'Pelota de ellos': 1,
+    Ganado: 2,
+    Perdido: 3,
+  }
+  return grupos.sort((a, b) => {
+    if (peso[a.estado] !== peso[b.estado]) return peso[a.estado] - peso[b.estado]
+    // Con fecha para retomar, la más próxima primero; sin fecha, al fondo
+    // del bloque, ordenados por contacto más reciente.
+    if (a.proximoContacto && b.proximoContacto) {
+      return a.proximoContacto.localeCompare(b.proximoContacto)
+    }
+    if (a.proximoContacto) return -1
+    if (b.proximoContacto) return 1
+    return b.ultimo.contactedOn.localeCompare(a.ultimo.contactedOn)
+  })
+}
+
 export type AlertLevel = 'critical' | 'warning' | 'info'
 
 export interface AlertItem {
@@ -334,6 +418,8 @@ interface AlertInput {
   maintenanceCharges: MaintenanceCharge[]
   /** Si `11_tickets.sql` no está corrido llega vacío, y no hay alertas. */
   tickets: Ticket[]
+  /** Ídem con `12_seguimientos.sql`. */
+  seguimientos: Seguimiento[]
 }
 
 /** dd/mm, que es todo lo que entra en el detalle de una alerta. */
@@ -351,6 +437,7 @@ export function buildAlerts({
   tasks,
   maintenanceCharges,
   tickets,
+  seguimientos,
 }: AlertInput): AlertItem[] {
   const alerts: AlertItem[] = []
 
@@ -511,6 +598,38 @@ export function buildAlerts({
           : `${ticket.title} — ${dias} día(s) abierto, grado ${ticket.grade}`,
       projectId: ticket.projectId,
       date: ticket.createdAt,
+    })
+  }
+
+  // Seguimientos que hay que retomar.
+  //
+  // SÓLO los que tienen la pelota de nuestro lado. Si están esperando
+  // ellos, no hay nada que hacer más que esperar, y una alerta ahí sería
+  // ruido — es justamente la distinción que justifica que el estado exista.
+  // Los cerrados (Ganado/Perdido) tampoco alertan aunque les haya quedado
+  // una fecha vieja encima.
+  //
+  // La ventana de 7 días y el salto a warning cuando se pasa son los mismos
+  // que usan los recordatorios de notas: son la misma clase de cosa
+  // («acordate de esto tal día») y tratarlas distinto sólo haría que la
+  // campana fuera menos previsible.
+  for (const grupo of agruparSeguimientos(seguimientos)) {
+    if (grupo.estado !== 'Pelota nuestra') continue
+    const d = daysUntil(grupo.proximoContacto)
+    if (d === null || d > 7) continue
+    alerts.push({
+      id: `seg-${grupo.key}`,
+      level: d < 0 ? 'warning' : 'info',
+      category: 'Seguimientos',
+      title: `Retomar · ${grupo.prospecto}`,
+      detail:
+        d < 0
+          ? `Había que volver a contactarlos hace ${Math.abs(d)} día(s)`
+          : d === 0
+            ? 'Hay que volver a contactarlos hoy'
+            : `Hay que volver a contactarlos en ${d} día(s)`,
+      projectId: null,
+      date: grupo.proximoContacto,
     })
   }
 
