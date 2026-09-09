@@ -93,7 +93,9 @@ export const frequencyMonths: Record<MaintenanceFrequency, number> = {
  */
 export function monthlyMaintenanceValue(project: Project): number {
   const m = project.maintenance
-  if (!m.active || m.status !== 'Activo') return 0
+  // `active` ahora se deriva de `status` en la base, así que no pueden
+  // discrepar: preguntar por los dos sería preguntar dos veces lo mismo.
+  if (m.status !== 'Activo') return 0
   return m.amount / frequencyMonths[m.frequency]
 }
 
@@ -190,7 +192,7 @@ export function nextMaintenanceCharge(
   today = new Date(),
 ): string | null {
   const m = project.maintenance
-  if (!m.active || m.status !== 'Activo') return null
+  if (m.status !== 'Activo') return null
   const anchor = m.lastCollectedDate ?? m.startDate ?? m.implementationDate
   if (!anchor) return null
   return dueDateSeries(m, anchor, today).next
@@ -230,7 +232,7 @@ export function maintenancePeriods(
 ): MaintenancePeriods {
   const empty: MaintenancePeriods = { next: null, overdue: [], overdueTotal: {} }
   const m = project.maintenance
-  if (!m.active || m.status !== 'Activo') return empty
+  if (m.status !== 'Activo') return empty
 
   const own = charges.filter((c) => c.projectId === project.id)
   const earliestCharge = own.reduce<string | null>(
@@ -382,6 +384,24 @@ export function agruparSeguimientos(
     if (b.proximoContacto) return 1
     return b.ultimo.contactedOn.localeCompare(a.ultimo.contactedOn)
   })
+}
+
+/**
+ * ¿Este proyecto tiene un plan de mantenimiento CARGADO?
+ *
+ * Distinto de «activo». La fila de `project_maintenance` existe siempre —la
+ * crea un trigger al dar de alta el proyecto— con todo en cero, así que
+ * `amount > 0` o una fecha o servicios cargados es lo que distingue un plan
+ * de verdad de la fila vacía que viene de fábrica.
+ *
+ * Hace falta porque el estado y la existencia son dos preguntas distintas, y
+ * confundirlas hacía desaparecer los planes pausados de TODAS las pantallas:
+ * quedaban con su importe y su historial intactos pero invisibles, y sin
+ * forma de volver a editarlos. Un plan pausado tiene que seguir estando a la
+ * vista, justamente para poder reactivarlo.
+ */
+export function hasMaintenancePlan(m: Maintenance): boolean {
+  return m.amount > 0 || m.startDate !== null || m.services.length > 0
 }
 
 export type AlertLevel = 'critical' | 'warning' | 'info'

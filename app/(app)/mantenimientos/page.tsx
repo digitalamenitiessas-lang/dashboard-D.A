@@ -5,7 +5,9 @@ import Link from 'next/link'
 import {
   CalendarClock,
   CircleCheck,
+  CirclePause,
   History,
+  Pencil,
   Plus,
   Repeat,
   TriangleAlert,
@@ -34,9 +36,15 @@ import { TodoList } from '@/components/proyectos/detail-parts'
 import {
   ActivateMaintenanceDialog,
   CollectMaintenanceDialog,
+  EditMaintenanceChargeDialog,
+  EditMaintenanceDialog,
 } from '@/components/mantenimientos/maintenance-dialogs'
 import { useStore } from '@/lib/store'
-import { maintenancePeriods, monthlyMaintenanceValue } from '@/lib/derive'
+import {
+  hasMaintenancePlan,
+  maintenancePeriods,
+  monthlyMaintenanceValue,
+} from '@/lib/derive'
 import { formatDate, formatMoney, relativeDays, daysUntil } from '@/lib/format'
 import {
   formatMoneyByCurrency,
@@ -45,25 +53,43 @@ import {
   sumByCurrency,
 } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import type { Project } from '@/lib/types'
+import type { MaintenanceCharge, Project } from '@/lib/types'
 
 export default function MantenimientosPage() {
   const { projects, maintenanceCharges } = useStore()
   const [activateTarget, setActivateTarget] = React.useState<Project | null>(null)
   const [collectTarget, setCollectTarget] = React.useState<Project | null>(null)
   const [newPlanOpen, setNewPlanOpen] = React.useState(false)
+  const [editTarget, setEditTarget] = React.useState<Project | null>(null)
+  const [chargeTarget, setChargeTarget] =
+    React.useState<MaintenanceCharge | null>(null)
 
   // `next` ya viene con la mora adentro: si hay períodos sin cobrar, el que
   // toca cobrar es el impago más viejo, no el del mes que viene.
   const active = projects
-    .filter((p) => p.maintenance.active && p.maintenance.status === 'Activo')
+    .filter((p) => p.maintenance.status === 'Activo')
     .map((p) => ({ project: p, ...maintenancePeriods(p, maintenanceCharges) }))
     .sort((a, b) => (a.next ?? '9999').localeCompare(b.next ?? '9999'))
 
-  // Implemented projects that could start billing but haven't been activated.
+  /**
+   * Planes cargados que hoy NO están cobrando: pausados y cancelados.
+   *
+   * Tienen que estar a la vista. Sin esta lista, pausar un plan lo hacía
+   * desaparecer de todas las pantallas —con su importe y su historial
+   * intactos pero invisibles— y no quedaba forma de volver a editarlo ni de
+   * reactivarlo.
+   */
+  const parados = projects
+    .filter((p) => hasMaintenancePlan(p.maintenance) && p.maintenance.status !== 'Activo')
+    .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+
+  // Proyectos implementados que podrían empezar a facturar y todavía no
+  // tienen ningún plan cargado. Los que SÍ tienen uno pero está parado van
+  // arriba, en su propia lista: ahí lo que corresponde es editarlo, no
+  // cargarlo de cero encima del que ya existe.
   const eligible = projects.filter(
     (p) =>
-      !p.maintenance.active &&
+      !hasMaintenancePlan(p.maintenance) &&
       (p.status === 'Implementado' || p.implementationDate !== null),
   )
 
@@ -247,17 +273,24 @@ export default function MantenimientosPage() {
                         </p>
                         <ul className="flex flex-col divide-y divide-white/5">
                           {history.slice(0, 3).map((charge) => (
-                            <li
-                              key={charge.id}
-                              className="flex items-center justify-between gap-3 py-1.5 text-xs"
-                            >
-                              <span className="text-muted-foreground">
-                                {formatDate(charge.chargedOn)}
-                                {charge.method ? ` · ${charge.method}` : ''}
-                              </span>
-                              <span className="shrink-0 font-medium tabular-nums">
-                                {formatMoney(charge.amount, charge.currency)}
-                              </span>
+                            <li key={charge.id}>
+                              {/* Todo el renglón es el blanco: en el celular
+                                  un ícono de lápiz de 24px al lado de un
+                                  monto es imposible de acertar. */}
+                              <button
+                                type="button"
+                                onClick={() => setChargeTarget(charge)}
+                                aria-label={`Corregir el cobro del ${formatDate(charge.chargedOn)} en ${project.name}`}
+                                className="-mx-2 flex w-[calc(100%+1rem)] items-center justify-between gap-3 rounded-lg px-2 py-2 text-xs transition-colors hover:bg-white/5"
+                              >
+                                <span className="text-muted-foreground tabular-nums">
+                                  {formatDate(charge.chargedOn)}
+                                  {charge.method ? ` · ${charge.method}` : ''}
+                                </span>
+                                <span className="shrink-0 font-medium tabular-nums">
+                                  {formatMoney(charge.amount, charge.currency)}
+                                </span>
+                              </button>
                             </li>
                           ))}
                         </ul>
@@ -269,10 +302,20 @@ export default function MantenimientosPage() {
                     <span className="text-xs text-muted-foreground">
                       Último cobro: {formatDate(m.lastCollectedDate)}
                     </span>
-                    <Button size="sm" onClick={() => setCollectTarget(project)}>
-                      <CircleCheck data-icon="inline-start" />
-                      Registrar cobro
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEditTarget(project)}
+                      >
+                        <Pencil data-icon="inline-start" />
+                        Editar
+                      </Button>
+                      <Button size="sm" onClick={() => setCollectTarget(project)}>
+                        <CircleCheck data-icon="inline-start" />
+                        Registrar cobro
+                      </Button>
+                    </div>
                   </div>
                 </section>
               )
@@ -280,6 +323,41 @@ export default function MantenimientosPage() {
           </div>
         )}
       </div>
+
+      {parados.length > 0 ? (
+        <SectionCard title="Planes pausados o cancelados" icon={CirclePause}>
+          <ul className="flex flex-col divide-y divide-white/5">
+            {parados.map((p) => (
+              <li
+                key={p.id}
+                className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"
+              >
+                <div className="min-w-0">
+                  <Link
+                    href={`/proyectos/${p.id}`}
+                    className="truncate text-sm font-medium transition-colors hover:text-neon-green"
+                  >
+                    {p.name}
+                  </Link>
+                  <p className="mt-0.5 text-xs text-muted-foreground tabular-nums">
+                    {p.maintenance.status} ·{' '}
+                    {formatMoney(p.maintenance.amount, p.maintenance.currency)} /{' '}
+                    {p.maintenance.frequency.toLowerCase()}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setEditTarget(p)}
+                >
+                  <Pencil data-icon="inline-start" />
+                  Editar
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </SectionCard>
+      ) : null}
 
       {eligible.length > 0 ? (
         <SectionCard title="Listos para activar mantenimiento" icon={Wrench}>
@@ -336,7 +414,11 @@ export default function MantenimientosPage() {
             </TableHeader>
             <TableBody>
               {maintenanceCharges.map((charge) => (
-                <TableRow key={charge.id}>
+                <TableRow
+                  key={charge.id}
+                  onClick={() => setChargeTarget(charge)}
+                  className="cursor-pointer transition-colors hover:bg-white/5"
+                >
                   <TableCell className="tabular-nums">
                     {formatDate(charge.chargedOn)}
                   </TableCell>
@@ -367,6 +449,28 @@ export default function MantenimientosPage() {
             </TableBody>
           </Table>
         </SectionCard>
+      ) : null}
+
+      {editTarget ? (
+        <EditMaintenanceDialog
+          key={editTarget.id}
+          project={editTarget}
+          open={!!editTarget}
+          onOpenChange={(o) => !o && setEditTarget(null)}
+        />
+      ) : null}
+
+      {chargeTarget ? (
+        <EditMaintenanceChargeDialog
+          key={chargeTarget.id}
+          charge={chargeTarget}
+          projectName={
+            projects.find((p) => p.id === chargeTarget.projectId)?.name ??
+            'Proyecto eliminado'
+          }
+          open={!!chargeTarget}
+          onOpenChange={(o) => !o && setChargeTarget(null)}
+        />
       ) : null}
 
       {newPlanOpen ? (

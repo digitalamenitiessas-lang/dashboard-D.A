@@ -41,6 +41,7 @@ import { EditProjectDialog } from '@/components/proyectos/edit-project-dialog'
 import { EditDevelopmentDialog } from '@/components/proyectos/edit-development-dialog'
 import { EditInfrastructureDialog } from '@/components/proyectos/edit-infrastructure-dialog'
 import { FixedCostsCard } from '@/components/proyectos/fixed-costs-card'
+import { EditMaintenanceDialog } from '@/components/mantenimientos/maintenance-dialogs'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
 import { NewTicketDialog } from '@/components/tickets/new-ticket-dialog'
 import { ResolveTicketDialog } from '@/components/tickets/resolve-ticket-dialog'
@@ -48,6 +49,7 @@ import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
 import {
+  hasMaintenancePlan,
   isTicketOpen,
   nextMaintenanceCharge,
   projectFinance,
@@ -79,6 +81,7 @@ export default function ProjectDetailPage() {
   const [devOpen, setDevOpen] = React.useState(false)
   const [infraOpen, setInfraOpen] = React.useState(false)
   const [resolveTarget, setResolveTarget] = React.useState<Ticket | null>(null)
+  const [editMntOpen, setEditMntOpen] = React.useState(false)
 
   const project = projects.find((p) => p.id === params.id)
 
@@ -580,10 +583,34 @@ export default function ProjectDetailPage() {
 
         {/* MANTENIMIENTO */}
         <TabsContent value="mantenimiento" className="mt-4">
-          {mnt.active ? (
+          {/* `hasMaintenancePlan` y no `active`: un plan pausado sigue siendo
+              un plan, con su importe y su historial. Preguntando por `active`
+              desaparecía de acá y no quedaba forma de reactivarlo. */}
+          {hasMaintenancePlan(mnt) ? (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <DetailCard title="Plan de mantenimiento" icon={Wrench}>
-                <InfoRow label="Estado">{mnt.status}</InfoRow>
+              <DetailCard
+                title="Plan de mantenimiento"
+                icon={Wrench}
+                action={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditMntOpen(true)}
+                  >
+                    <Pencil data-icon="inline-start" />
+                    Editar
+                  </Button>
+                }
+              >
+                <InfoRow label="Estado">
+                  {mnt.status === 'Activo' ? (
+                    mnt.status
+                  ) : (
+                    <span className="text-amber-300">
+                      {mnt.status} · no está cobrando
+                    </span>
+                  )}
+                </InfoRow>
                 <InfoRow label="Monto">
                   {formatMoney(mnt.amount, mnt.currency)} / {mnt.frequency.toLowerCase()}
                 </InfoRow>
@@ -655,10 +682,10 @@ export default function ProjectDetailPage() {
           ) : (
             <Empty className="glass rounded-2xl">
               <EmptyHeader>
-                <EmptyTitle>Sin mantenimiento activo</EmptyTitle>
+                <EmptyTitle>Sin plan de mantenimiento</EmptyTitle>
                 <EmptyDescription>
-                  Este proyecto no tiene un plan de mantenimiento recurrente.
-                  Activalo desde la sección Mantenimientos una vez implementado.
+                  Este proyecto no tiene un plan recurrente cargado. Activalo
+                  desde la sección Mantenimientos una vez implementado.
                 </EmptyDescription>
               </EmptyHeader>
               <Button
@@ -817,6 +844,14 @@ export default function ProjectDetailPage() {
       </Tabs>
 
       <Separator className="opacity-0" />
+
+      {editMntOpen ? (
+        <EditMaintenanceDialog
+          project={project}
+          open={editMntOpen}
+          onOpenChange={setEditMntOpen}
+        />
+      ) : null}
 
       {resolveTarget ? (
         <ResolveTicketDialog
