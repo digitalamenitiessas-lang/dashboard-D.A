@@ -39,6 +39,8 @@ import {
   EditMaintenanceChargeDialog,
   EditMaintenanceDialog,
 } from '@/components/mantenimientos/maintenance-dialogs'
+import { WhatsappButton } from '@/components/shared/whatsapp-button'
+import { mensajeMantenimientoVencido } from '@/lib/mensajes'
 import { useStore } from '@/lib/store'
 import {
   hasMaintenancePlan,
@@ -56,7 +58,7 @@ import { cn } from '@/lib/utils'
 import type { MaintenanceCharge, Project } from '@/lib/types'
 
 export default function MantenimientosPage() {
-  const { projects, maintenanceCharges } = useStore()
+  const { projects, clients, maintenanceCharges } = useStore()
   const [activateTarget, setActivateTarget] = React.useState<Project | null>(null)
   const [collectTarget, setCollectTarget] = React.useState<Project | null>(null)
   const [newPlanOpen, setNewPlanOpen] = React.useState(false)
@@ -194,6 +196,7 @@ export default function MantenimientosPage() {
               const late = overdue.length > 0
               const soon = !late && d !== null && d >= 0 && d <= 7
               const m = project.maintenance
+              const cliente = clients.find((c) => c.id === project.clientId)
               return (
                 <section key={project.id} className="glass rounded-2xl p-5">
                   <div className="flex items-start justify-between gap-3">
@@ -302,7 +305,23 @@ export default function MantenimientosPage() {
                     <span className="text-xs text-muted-foreground">
                       Último cobro: {formatDate(m.lastCollectedDate)}
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {/* Sólo si está vencido: el reclamo se ofrece cuando hay
+                          algo que reclamar. Un botón de WhatsApp en un plan al
+                          día invita a molestar a un cliente que no debe nada. */}
+                      {late && cliente?.phone ? (
+                        <WhatsappButton
+                          telefono={cliente.phone}
+                          mensaje={mensajeMantenimientoVencido(
+                            cliente.contactPerson || project.contactPerson,
+                            project.name,
+                            overdue.length,
+                            overdue[0],
+                            overdueTotal,
+                          )}
+                          label="Reclamar"
+                        />
+                      ) : null}
                       <Button
                         size="sm"
                         variant="outline"

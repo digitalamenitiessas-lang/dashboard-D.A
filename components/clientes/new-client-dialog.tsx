@@ -18,6 +18,8 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useStore } from '@/lib/store'
+import { TelefonoInput } from '@/components/shared/telefono-input'
+import { PAIS_POR_DEFECTO, normalizarTelefono } from '@/lib/telefono'
 
 export function NewClientDialog() {
   const { addClient } = useStore()
@@ -25,6 +27,7 @@ export function NewClientDialog() {
   const [name, setName] = React.useState('')
   const [contactPerson, setContactPerson] = React.useState('')
   const [phone, setPhone] = React.useState('')
+  const [pais, setPais] = React.useState(PAIS_POR_DEFECTO)
   const [email, setEmail] = React.useState('')
   const [notes, setNotes] = React.useState('')
   const [saving, setSaving] = React.useState(false)
@@ -33,6 +36,7 @@ export function NewClientDialog() {
     setName('')
     setContactPerson('')
     setPhone('')
+    setPais(PAIS_POR_DEFECTO)
     setEmail('')
     setNotes('')
   }
@@ -43,12 +47,27 @@ export function NewClientDialog() {
       toast.error('El nombre o razón social es obligatorio')
       return
     }
+    // El teléfono es obligatorio y además tiene que poder interpretarse: un
+    // número guardado que WhatsApp no puede abrir es lo mismo que no tenerlo,
+    // pero peor, porque parece que está.
+    const tel = normalizarTelefono(phone, pais)
+    if (!tel) {
+      toast.error(
+        phone.trim()
+          ? 'Revisá el teléfono: no se pudo interpretar'
+          : 'El teléfono es obligatorio',
+      )
+      return
+    }
     if (saving) return
     setSaving(true)
     const ok = await addClient({
       name: name.trim(),
       contactPerson: contactPerson.trim(),
-      phone: phone.trim(),
+      // Se guarda el internacional, que es lo que `wa.me` necesita. El
+      // campo lo acepta de vuelta tal cual, así que editar funciona sin
+      // conversiones: la normalización es idempotente.
+      phone: tel,
       email: email.trim(),
       notes: notes.trim(),
     })
@@ -92,27 +111,27 @@ export function NewClientDialog() {
                 placeholder="Ej: Marina López"
               />
             </Field>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="nc-phone">Teléfono</FieldLabel>
-                <Input
-                  id="nc-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  placeholder="+54 11 ..."
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="nc-email">Correo</FieldLabel>
-                <Input
-                  id="nc-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="contacto@empresa.com"
-                />
-              </Field>
-            </div>
+            <Field>
+              <FieldLabel htmlFor="nc-phone">Teléfono (WhatsApp)</FieldLabel>
+              <TelefonoInput
+                id="nc-phone"
+                value={phone}
+                onValueChange={setPhone}
+                pais={pais}
+                onPaisChange={setPais}
+                required
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="nc-email">Correo</FieldLabel>
+              <Input
+                id="nc-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="contacto@empresa.com"
+              />
+            </Field>
             <Field>
               <FieldLabel htmlFor="nc-notes">Notas</FieldLabel>
               <Textarea

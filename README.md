@@ -212,6 +212,24 @@ supabase/         Scripts SQL versionados
   propio no puede tener cliente. La ruta `/clientes` sobrevive sólo como
   redirección, porque esa URL está en marcadores y en la pantalla de inicio de
   quien instaló la PWA.
+- **El teléfono de un cliente se guarda en formato internacional.** `wa.me`
+  necesita dígitos puros con código de país, y para un celular argentino eso
+  significa sacarle el 0, sacarle el 15 y meterle un 9: `0381 15-555-1234` es
+  `5493815551234`. Nadie se acuerda de esa regla y equivocarse no da error —
+  WhatsApp abre y dice que el número no existe, justo cuando estás
+  reclamando un pago. Toda la conversión vive en `lib/telefono.ts`, es
+  idempotente (un número ya guardado vuelve a dar lo mismo) y el campo
+  muestra en vivo el número final para confirmarlo antes de guardar. Los
+  casos verificados están escritos en el encabezado del módulo: si tocás esa
+  función, volvé a pasarlos.
+- **Un botón de WhatsApp que no puede abrir el número NO se renderiza.** Es
+  peor que no tenerlo: hace perder el tiempo en el peor momento. Que falte el
+  botón manda a cargar bien el teléfono, que es lo que corresponde.
+- **Los montos de un mensaje saliente SIEMPRE llevan el código de moneda**,
+  aunque haya una sola en juego. Adentro de la app `formatMoneyByCurrency()`
+  usa el símbolo cuando no hay ambigüedad de contexto; un mensaje que le
+  llega a un cliente no tiene ese contexto, y un «$625» se lee como pesos.
+  Lo resuelve `montos()` en `lib/mensajes.ts`.
 - **El mantenimiento tiene UN estado, y `active` se deriva de él.** Eran dos
   columnas independientes (`active` boolean y `status`) y la lógica exigía las
   dos: una fila con `active` en true y `status` en 'Pausado' desaparecía en
