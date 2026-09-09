@@ -9,6 +9,8 @@
  * el SQL que hay que pegar. Se puede correr las veces que haga falta:
  * lo que ya existe no se toca ni se regenera.
  *
+ *   --solo-sql      imprime los secretos y el SQL para pegar a mano, y sale.
+ *                   Para cuando la CLI de Supabase no está logueada.
  *   --solo-claves   genera y guarda las claves, sin tocar Supabase
  *   --forzar-claves regenera el par VAPID aunque ya haya uno
  *                   (si lo hacés, todos los celulares se tienen que
@@ -24,6 +26,9 @@ const ENV = resolve(process.cwd(), '.env.local')
 const args = process.argv.slice(2)
 const soloClaves = args.includes('--solo-claves')
 const forzarClaves = args.includes('--forzar-claves')
+// Imprime lo que queda a mano y sale. Para cuando Supabase se hace el dificil
+// pero el SQL no depende de Supabase para nada.
+const soloSql = args.includes('--solo-sql')
 
 const c = {
   ok: (s) => `\x1b[32m${s}\x1b[0m`,
@@ -166,6 +171,15 @@ if (soloClaves) {
   process.exit(0)
 }
 
+if (soloSql) {
+  console.log(`\n${c.fuerte('─'.repeat(64))}`)
+  console.log(c.fuerte(' Para pegar, sin tocar Supabase desde acá'))
+  console.log(`${c.fuerte('─'.repeat(64))}\n`)
+  imprimirSecretos()
+  imprimirSql()
+  process.exit(0)
+}
+
 // ---------------------------------------------------------------------
 // Supabase
 // ---------------------------------------------------------------------
@@ -184,11 +198,7 @@ if (version.status !== 0) {
   console.log(`\n${c.ojo('!')} No encontré la CLI de Supabase.`)
   console.log(`  Instalala con:  ${c.fuerte('npm install -g supabase')}`)
   console.log(`  O hacé el deploy desde el panel: Edge Functions → Deploy a new function.\n`)
-  console.log(`  Los secretos, en Settings → Edge Functions → Secrets:`)
-  console.log(`    VAPID_PUBLIC_KEY   = ${env.NEXT_PUBLIC_VAPID_PUBLIC_KEY}`)
-  console.log(`    VAPID_PRIVATE_KEY  = ${c.tenue('(el de .env.local, no lo pego acá)')}`)
-  console.log(`    VAPID_SUBJECT      = ${env.VAPID_SUBJECT}`)
-  console.log(`    PUSH_TOKEN         = ${c.tenue('(el de .env.local)')}\n`)
+  imprimirSecretos()
   imprimirSql()
   process.exit(1)
 }
@@ -206,9 +216,17 @@ const secretos = supabase([
 ])
 
 if (secretos.status !== 0) {
+  // El SQL no depende de esto y se imprime igual. Los secretos y el deploy se
+  // pueden hacer desde el panel, pero el insert en `app_settings` es lo único
+  // sin lo cual el push no manda NADA — y encima falla en silencio, así que
+  // tragárselo por un error de login es la peor combinación posible.
+  console.log(`\n${c.ojo('!')} No pude cargar los secretos en Supabase.`)
   console.log(
-    `\n${c.ojo('!')} Falló al cargar los secretos. Si es por login: ${c.fuerte('supabase login')}\n`,
+    `  Casi siempre es falta de login: corré ${c.fuerte('supabase login')} y volvé a intentar.`,
   )
+  console.log(`  O cargalos a mano: Settings → Edge Functions → Secrets.\n`)
+  imprimirSecretos()
+  imprimirSql()
   process.exit(1)
 }
 
@@ -223,13 +241,31 @@ const deploy = supabase([
 ])
 
 if (deploy.status !== 0) {
-  console.log(`\n${c.ojo('!')} Falló el deploy de la función. Mirá el error de arriba.\n`)
+  console.log(`\n${c.ojo('!')} Falló el deploy de la función. Mirá el error de arriba.`)
+  console.log(`  Alternativa: Edge Functions → Deploy a new function, pegando`)
+  console.log(`  el contenido de supabase/functions/enviar-push/index.ts\n`)
+  imprimirSql()
   process.exit(1)
 }
 
 // ---------------------------------------------------------------------
 // Lo que queda a mano
 // ---------------------------------------------------------------------
+
+/**
+ * Los cuatro secretos de la Edge Function, para cargarlos desde el panel.
+ *
+ * La privada y el token se imprimen enteros a propósito: son secretos del
+ * servidor, no de la terminal de su dueño, y sin verlos no hay forma de
+ * pegarlos en el panel. Lo que no hay que hacer es mandarlos por chat.
+ */
+function imprimirSecretos() {
+  console.log(`${c.fuerte('Secretos')} (Settings → Edge Functions → Secrets):\n`)
+  console.log(`   VAPID_PUBLIC_KEY  = ${env.NEXT_PUBLIC_VAPID_PUBLIC_KEY}`)
+  console.log(`   VAPID_PRIVATE_KEY = ${env.VAPID_PRIVATE_KEY}`)
+  console.log(`   VAPID_SUBJECT     = ${env.VAPID_SUBJECT}`)
+  console.log(`   PUSH_TOKEN        = ${env.PUSH_TOKEN}\n`)
+}
 
 function imprimirSql() {
   console.log(`${c.fuerte('1) En el SQL Editor de Supabase')}`)

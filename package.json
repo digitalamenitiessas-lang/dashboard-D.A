@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "push:setup": "node scripts/push-setup.mjs",
+    "push:sql": "node scripts/push-setup.mjs --solo-sql",
     "push:keys": "node scripts/push-setup.mjs --solo-claves"
   },
   "dependencies": {

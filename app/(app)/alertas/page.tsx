@@ -23,6 +23,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
 import { SectionCard } from '@/components/dashboard/section-card'
+import { PushHealth } from '@/components/layout/push-health'
 import { useStore } from '@/lib/store'
 import { buildAlerts, type AlertItem, type AlertLevel } from '@/lib/derive'
 import { formatDate } from '@/lib/format'
@@ -100,6 +101,10 @@ export default function AlertasPage() {
         title="Alertas"
         description="Todo lo que requiere atención: cobros, mantenimientos, proyectos e infraestructura."
       />
+
+      {/* Va primero y arriba de todo a propósito: si el push está cortado,
+          nada de lo que sigue en esta pantalla va a llegar a un celular. */}
+      <PushHealth />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatCard
