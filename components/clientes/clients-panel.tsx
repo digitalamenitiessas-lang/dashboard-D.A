@@ -13,6 +13,9 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { StatusChip } from '@/components/shared/status-chip'
 import { EditClientDialog } from '@/components/clientes/edit-client-dialog'
+import { WhatsappButton } from '@/components/shared/whatsapp-button'
+import { mensajeCobroCliente } from '@/lib/mensajes'
+import { formatearTelefono } from '@/lib/telefono'
 import { useStore } from '@/lib/store'
 import { projectFinance } from '@/lib/derive'
 import {
@@ -200,7 +203,7 @@ export function ClientsPanel({
                     {client.phone ? (
                       <span className="inline-flex items-center gap-1.5 tabular-nums">
                         <Phone className="size-3.5" />
-                        {client.phone}
+                        {formatearTelefono(client.phone)}
                       </span>
                     ) : null}
                     {client.email ? (
@@ -256,6 +259,27 @@ export function ClientsPanel({
                       </div>
                     ) : null}
                   </div>
+
+                  {/* Abajo del cuadro de montos a propósito: es el renglón
+                      donde uno acaba de leer cuánto le deben, que es el
+                      momento en que da ganas de escribirle. */}
+                  {client.phone ? (
+                    <div className="mt-3">
+                      <WhatsappButton
+                        telefono={client.phone}
+                        mensaje={mensajeCobroCliente(
+                          client.contactPerson,
+                          pending,
+                        )}
+                        label={
+                          isEmptyMoney(pending)
+                            ? 'Escribirle por WhatsApp'
+                            : `Reclamar ${formatMoneyByCurrency(pending)}`
+                        }
+                        className="w-full"
+                      />
+                    </div>
+                  ) : null}
 
                   <div className="mt-4">
                     <p className="mb-2 text-xs font-medium text-muted-foreground tabular-nums">

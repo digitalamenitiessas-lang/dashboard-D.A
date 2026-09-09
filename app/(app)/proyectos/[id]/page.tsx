@@ -43,6 +43,8 @@ import { EditInfrastructureDialog } from '@/components/proyectos/edit-infrastruc
 import { FixedCostsCard } from '@/components/proyectos/fixed-costs-card'
 import { EditMaintenanceDialog } from '@/components/mantenimientos/maintenance-dialogs'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
+import { WhatsappButton } from '@/components/shared/whatsapp-button'
+import { mensajeCobroProyecto } from '@/lib/mensajes'
 import { NewTicketDialog } from '@/components/tickets/new-ticket-dialog'
 import { ResolveTicketDialog } from '@/components/tickets/resolve-ticket-dialog'
 import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
@@ -297,6 +299,25 @@ export default function ProjectDetailPage() {
               <InfoRow label="Cliente / dueño">
                 {client?.name ?? project.ownerName}
               </InfoRow>
+              {/* Sólo con cliente cargado y teléfono válido. Un proyecto
+                  propio no tiene a quién escribirle. */}
+              {client?.phone ? (
+                <InfoRow label="Contactar">
+                  <WhatsappButton
+                    telefono={client.phone}
+                    mensaje={mensajeCobroProyecto(
+                      client.contactPerson || project.contactPerson,
+                      project.name,
+                      fin.pendingByCurrency,
+                    )}
+                    label={
+                      isEmptyMoney(fin.pendingByCurrency)
+                        ? 'WhatsApp'
+                        : `Reclamar ${formatMoneyByCurrency(fin.pendingByCurrency)}`
+                    }
+                  />
+                </InfoRow>
+              ) : null}
               <InfoRow label="Contacto">{project.contactPerson || '—'}</InfoRow>
               <InfoRow label="Responsable interno">{project.internalLead}</InfoRow>
               <InfoRow label="Inicio">{formatDate(project.startDate)}</InfoRow>

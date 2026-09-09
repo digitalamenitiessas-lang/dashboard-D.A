@@ -15,6 +15,8 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { useStore } from '@/lib/store'
+import { TelefonoInput } from '@/components/shared/telefono-input'
+import { PAIS_POR_DEFECTO, normalizarTelefono } from '@/lib/telefono'
 import type { Client } from '@/lib/types'
 
 export function EditClientDialog({
@@ -30,6 +32,10 @@ export function EditClientDialog({
   const [name, setName] = React.useState(client.name)
   const [contactPerson, setContactPerson] = React.useState(client.contactPerson)
   const [phone, setPhone] = React.useState(client.phone)
+  // El país arranca en Argentina siempre: lo guardado ya es internacional y
+  // la normalización lo reconoce igual, así que el selector sólo importa
+  // cuando se está escribiendo un número nuevo del exterior.
+  const [pais, setPais] = React.useState(PAIS_POR_DEFECTO)
   const [email, setEmail] = React.useState(client.email)
   const [notes, setNotes] = React.useState(client.notes)
   const [saving, setSaving] = React.useState(false)
@@ -40,12 +46,21 @@ export function EditClientDialog({
       toast.error('El nombre o razón social es obligatorio')
       return
     }
+    const tel = normalizarTelefono(phone, pais)
+    if (!tel) {
+      toast.error(
+        phone.trim()
+          ? 'Revisá el teléfono: no se pudo interpretar'
+          : 'El teléfono es obligatorio',
+      )
+      return
+    }
     if (saving) return
     setSaving(true)
     const ok = await updateClient(client.id, {
       name: name.trim(),
       contactPerson: contactPerson.trim(),
-      phone: phone.trim(),
+      phone: tel,
       email: email.trim(),
       notes: notes.trim(),
     })
@@ -80,25 +95,26 @@ export function EditClientDialog({
                 onChange={(e) => setContactPerson(e.target.value)}
               />
             </Field>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="ec-phone">Teléfono</FieldLabel>
-                <Input
-                  id="ec-phone"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="ec-email">Correo</FieldLabel>
-                <Input
-                  id="ec-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </Field>
-            </div>
+            <Field>
+              <FieldLabel htmlFor="ec-phone">Teléfono (WhatsApp)</FieldLabel>
+              <TelefonoInput
+                id="ec-phone"
+                value={phone}
+                onValueChange={setPhone}
+                pais={pais}
+                onPaisChange={setPais}
+                required
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="ec-email">Correo</FieldLabel>
+              <Input
+                id="ec-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </Field>
             <Field>
               <FieldLabel htmlFor="ec-notes">Notas</FieldLabel>
               <Textarea
