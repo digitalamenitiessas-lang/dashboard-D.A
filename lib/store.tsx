@@ -23,6 +23,7 @@ import {
   mapTask,
   movementToRow,
   noteToRow,
+  maintenanceChargeToRow,
   mapSeguimiento,
   mapTicket,
   paymentToRow,
@@ -232,6 +233,18 @@ interface StoreValue {
       accountId?: string | null
     },
   ) => Promise<boolean>
+  /**
+   * Corregir o borrar un cobro ya registrado. No existían, y era el peor
+   * agujero de corrección de datos de la app: un cobro con el importe, la
+   * fecha o la cuenta equivocados ensucia AL MISMO TIEMPO el saldo de Caja
+   * (`accountBalances()`), el total de /cobros y el conteo de períodos
+   * vencidos de /mantenimientos — y sólo se arreglaba por SQL a mano.
+   */
+  updateMaintenanceCharge: (
+    id: string,
+    patch: Partial<MaintenanceCharge>,
+  ) => Promise<boolean>
+  deleteMaintenanceCharge: (id: string) => Promise<boolean>
 }
 
 /**
@@ -1202,6 +1215,35 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // -------------------------------------------------------------------
   // Maintenance
   // -------------------------------------------------------------------
+
+  /**
+   * Deja `last_collected_date` diciendo la verdad: el máximo `charged_on`
+   * real del proyecto, o null si no le quedó ningún cobro.
+   *
+   * Es dato DERIVADO —el README lo marca como no confiable y la mora se
+   * calcula contra `maintenance_charges`, nunca contra esta fecha— pero
+   * mientras la columna exista conviene que no mienta. Se lee de la base y
+   * no del array en memoria a propósito: es la fuente que puede tener
+   * cobros que esta sesión todavía no vio.
+   */
+  const recalcularUltimoCobro = React.useCallback(
+    async (projectId: string) => {
+      const { data, error } = await supabase
+        .from('maintenance_charges')
+        .select('charged_on')
+        .eq('project_id', projectId)
+        .order('charged_on', { ascending: false })
+        .limit(1)
+      if (error) throw error
+      const { error: mErr } = await supabase
+        .from('project_maintenance')
+        .update({ last_collected_date: data?.[0]?.charged_on ?? null })
+        .eq('project_id', projectId)
+      if (mErr) throw mErr
+    },
+    [supabase],
+  )
+
   const updateMaintenance = React.useCallback(
     async (id: string, maintenance: Partial<Maintenance>) => {
       try {
@@ -1231,11 +1273,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       try {
         const { error } = await supabase
           .from('project_maintenance')
-          .update({
-            ...maintenanceToRow(maintenance),
-            active: true,
-            status: 'Activo',
-          })
+          // Sólo `status`: `active` es una columna generada a partir de él
+          // y Postgres rechaza que se le escriba encima. Activar es mover
+          // el estado, y nada más.
+          .update({ ...maintenanceToRow(maintenance), status: 'Activo' })
           .eq('project_id', id)
         if (error) throw error
 
@@ -1278,17 +1319,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     ) => {
       try {
         const project = projects.find((p) => p.id === id)
+        // La moneda sale del plan. Si el proyecto no está en memoria se
+        // aborta en vez de asumir dólares: era el único lugar de la app que
+        // podía violar solo la regla de no mezclar monedas, y un cobro de
+        // ARS 200.000 guardado como USD 200.000 rompe el saldo de la cuenta,
+        // el total cobrado y el MRR sin que nada avise.
+        if (!project) {
+          fail(
+            'registrar el cobro de mantenimiento',
+            new Error(
+              'No se encontró el proyecto en memoria, así que no se puede saber en qué moneda es el cobro. Recargá la página y probá de nuevo.',
+            ),
+          )
+          return false
+        }
+
         const { data: charge, error } = await supabase
           .from('maintenance_charges')
-          .insert({
-            project_id: id,
-            charged_on: data.date,
-            amount: data.amount,
-            currency: project?.maintenance.currency ?? 'USD',
-            method: data.method ?? null,
-            receipt: data.receipt ?? null,
-            account_id: data.accountId ?? null,
-          })
+          .insert(
+            maintenanceChargeToRow({
+              projectId: id,
+              chargedOn: data.date,
+              amount: data.amount,
+              currency: project.maintenance.currency,
+              method: data.method ?? null,
+              receipt: data.receipt ?? null,
+              accountId: data.accountId ?? null,
+            }),
+          )
           .select()
           .single()
         if (error) throw error
@@ -1298,23 +1356,21 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ),
         )
 
-        const { error: mErr } = await supabase
-          .from('project_maintenance')
-          .update({ last_collected_date: data.date })
-          .eq('project_id', id)
-        if (mErr) throw mErr
+        // `last_collected_date` es dato DERIVADO y el README lo marca como
+        // no confiable, pero mientras exista conviene que no mienta: se
+        // recalcula como el máximo real de los cobros del proyecto en vez de
+        // pisarse con la fecha del último que se cargó. Sin esto, cargar un
+        // cobro retroactivo movía la fecha hacia atrás y nada la recalculaba.
+        await recalcularUltimoCobro(id)
 
         await reloadProject(id)
         // El monto va formateado y con su moneda: acá el «$» solo no dice
         // nada, que es justamente el punto de toda la app.
-        const collected = formatMoney(
-          data.amount,
-          project?.maintenance.currency ?? 'USD',
-        )
+        const collected = formatMoney(data.amount, project.maintenance.currency)
         await logActivity({
           projectId: id,
           type: 'mantenimiento',
-          message: `Mantenimiento cobrado en ${project?.name ?? ''} (${collected})`,
+          message: `Mantenimiento cobrado en ${project.name} (${collected})`,
         })
         return true
       } catch (e) {
@@ -1323,6 +1379,61 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       }
     },
     [supabase, reloadProject, projects, logActivity, fail],
+  )
+
+  const updateMaintenanceCharge = React.useCallback(
+    async (id: string, patch: Partial<MaintenanceCharge>) => {
+      try {
+        const row = maintenanceChargeToRow(patch)
+        if (Object.keys(row).length === 0) return true
+        const { data, error } = await supabase
+          .from('maintenance_charges')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        const charge = mapMaintenanceCharge(data)
+        setMaintenanceCharges((prev) =>
+          prev
+            .map((c) => (c.id === id ? charge : c))
+            .sort((a, b) => b.chargedOn.localeCompare(a.chargedOn)),
+        )
+        // Si se movió la fecha, la derivada del plan queda vieja.
+        await recalcularUltimoCobro(charge.projectId)
+        await reloadProject(charge.projectId)
+        return true
+      } catch (e) {
+        fail('guardar el cobro de mantenimiento', e)
+        return false
+      }
+    },
+    [supabase, recalcularUltimoCobro, reloadProject, fail],
+  )
+
+  const deleteMaintenanceCharge = React.useCallback(
+    async (id: string) => {
+      // El proyecto se lee ANTES de borrar: después la fila ya no está y no
+      // habría contra qué recalcular la fecha del plan.
+      const previo = maintenanceCharges.find((c) => c.id === id)
+      try {
+        const { error } = await supabase
+          .from('maintenance_charges')
+          .delete()
+          .eq('id', id)
+        if (error) throw error
+        setMaintenanceCharges((prev) => prev.filter((c) => c.id !== id))
+        if (previo) {
+          await recalcularUltimoCobro(previo.projectId)
+          await reloadProject(previo.projectId)
+        }
+        return true
+      } catch (e) {
+        fail('eliminar el cobro de mantenimiento', e)
+        return false
+      }
+    },
+    [supabase, maintenanceCharges, recalcularUltimoCobro, reloadProject, fail],
   )
 
   // -------------------------------------------------------------------
@@ -1631,6 +1742,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,
+      updateMaintenanceCharge,
+      deleteMaintenanceCharge,
     }),
     [
       loading,
@@ -1693,6 +1806,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,
+      updateMaintenanceCharge,
+      deleteMaintenanceCharge,
     ],
   )
 

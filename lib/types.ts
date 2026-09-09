@@ -125,6 +125,19 @@ export interface Infrastructure {
 }
 
 export interface Maintenance {
+  /**
+   * DERIVADO de `status`, no se escribe.
+   *
+   * En la base es una columna generada (`generated always as (status =
+   * 'Activo')`), así que Postgres rechaza cualquier intento de escribirla y
+   * no puede volver a discrepar. Antes eran dos columnas independientes y la
+   * lógica exigía las dos: una fila con `active` en true y `status` en
+   * 'Pausado' desaparecía en silencio de la mora, del próximo cobro, de las
+   * alertas y del push. Ver `supabase/13_mantenimiento_un_solo_estado.sql`.
+   *
+   * Sigue existiendo porque lo leen cinco scripts SQL, entre ellos la
+   * función del cron diario. Para código nuevo, preguntá por `status`.
+   */
   active: boolean
   implementationDate: string | null // ISO
   startDate: string | null // ISO
