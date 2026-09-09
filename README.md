@@ -50,10 +50,11 @@ de Supabase, en orden:
 | `10_gastos.sql` | Gastos fijos y en qué se va la plata |
 | `11_tickets.sql` | Reclamos y pedidos de clientes |
 | `12_seguimientos.sql` | Acercamientos comerciales con prospectos |
+| `13_mantenimiento_un_solo_estado.sql` | `active` pasa a derivarse de `status` |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
-Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11** y
-**12**:
+Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11**,
+**12** y **13**:
 el 03 ya crea `payments` con la forma final. El **07** es la migración para una
 base creada antes de ese cambio. Del 08 en adelante son todos idempotentes: se
 pueden correr de nuevo sin romper nada.
@@ -211,6 +212,25 @@ supabase/         Scripts SQL versionados
   propio no puede tener cliente. La ruta `/clientes` sobrevive sólo como
   redirección, porque esa URL está en marcadores y en la pantalla de inicio de
   quien instaló la PWA.
+- **El mantenimiento tiene UN estado, y `active` se deriva de él.** Eran dos
+  columnas independientes (`active` boolean y `status`) y la lógica exigía las
+  dos: una fila con `active` en true y `status` en 'Pausado' desaparecía en
+  silencio de la mora, del próximo cobro, de las alertas y del push. Ahora
+  `active` es una columna GENERADA (`generated always as (status = 'Activo')`),
+  así que Postgres rechaza que se le escriba encima y no puede volver a
+  discrepar. No se borró porque la leen cinco scripts SQL, entre ellos la
+  función del cron diario. **Código nuevo: preguntá por `status`.**
+- **Editar el importe de un plan es retroactivo, y el diálogo lo dice.** La
+  mora se calcula como «períodos sin cobrar × importe actual»
+  (`maintenancePeriods()`), así que corregir el número también corrige lo que
+  figura como deuda vieja. Para un número mal tipeado es lo que se busca; para
+  un aumento pactado desde tal mes, no — eso todavía no tiene forma de
+  representarse.
+- **Un plan pausado sigue estando a la vista.** Las pantallas preguntan por
+  `hasMaintenancePlan()` para saber si un plan EXISTE y por `status` para saber
+  si está cobrando. Son dos preguntas distintas: confundirlas hacía que pausar
+  un plan lo borrara de todas las pantallas, con su importe y su historial
+  intactos pero sin forma de volver a editarlo.
 - **Un seguimiento es un CONTACTO, no un prospecto.** Cada reunión, llamada o
   mail es un renglón de `seguimientos`; el hilo de un prospecto es el conjunto
   de sus contactos y su estado sale del más reciente (`agruparSeguimientos()`

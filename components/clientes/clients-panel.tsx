@@ -84,7 +84,7 @@ export function ClientsPanel({
         pending: mergeMoney(...finances.map((f) => f.pendingByCurrency)),
         pct: collectionRatio(quoted, paid),
         activeMaintenances: clientProjects.filter(
-          (p) => p.maintenance.active && p.maintenance.status === 'Activo',
+          (p) => p.maintenance.status === 'Activo',
         ),
       }
     })

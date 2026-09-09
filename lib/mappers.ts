@@ -360,9 +360,13 @@ export function infrastructureToRow(i: Partial<Infrastructure>): Row {
   })
 }
 
+/**
+ * `active` NO va: en la base es una columna generada a partir de `status` y
+ * Postgres rechaza que alguien le escriba encima. Activar o pausar un plan
+ * es mover `status`, y nada más.
+ */
 export function maintenanceToRow(m: Partial<Maintenance>): Row {
   return pick(m, {
-    active: 'active',
     implementationDate: 'implementation_date',
     startDate: 'start_date',
     amount: 'amount',
@@ -372,6 +376,24 @@ export function maintenanceToRow(m: Partial<Maintenance>): Row {
     services: 'services',
     status: 'status',
     lastCollectedDate: 'last_collected_date',
+  })
+}
+
+/**
+ * Faltaba: `maintenance_charges` se leía con mapper y se escribía a mano en
+ * el store, que es la asimetría que hace que un rename de columna se pierda
+ * en silencio (`Row` es `Record<string, any>`, así que el build no avisa).
+ */
+export function maintenanceChargeToRow(c: Partial<MaintenanceCharge>): Row {
+  return pick(c, {
+    projectId: 'project_id',
+    chargedOn: 'charged_on',
+    amount: 'amount',
+    currency: 'currency',
+    method: 'method',
+    receipt: 'receipt',
+    notes: 'notes',
+    accountId: 'account_id',
   })
 }
 
