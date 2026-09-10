@@ -33,8 +33,13 @@ import { SimpleSelect } from '@/components/shared/simple-select'
 import { AccountDialog } from '@/components/caja/account-dialog'
 import { MovementDialog } from '@/components/caja/movement-dialog'
 import { useStore } from '@/lib/store'
-import { accountBalances, accountLedger, totalByCurrency } from '@/lib/caja'
-import { formatDate, formatMoney } from '@/lib/format'
+import {
+  accountBalances,
+  accountLedger,
+  cobrosDescalzados,
+  totalByCurrency,
+} from '@/lib/caja'
+import { formatDate, formatMoney, formatMoneyWithCode } from '@/lib/format'
 import { formatMoneyByCurrency } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import type { Account, MoneyMovement } from '@/lib/types'
@@ -82,6 +87,12 @@ export default function CajaPage() {
   )
 
   // Cobros with no account assigned are money the Caja can't see.
+  const descalzados = cobrosDescalzados({
+    accounts,
+    payments,
+    maintenanceCharges,
+  })
+
   const unassigned = [
     ...payments.filter((p) => !p.accountId),
     ...maintenanceCharges.filter((c) => !c.accountId),
@@ -176,6 +187,42 @@ export default function CajaPage() {
           accent="neutral"
         />
       </div>
+
+      {/* Mismo cartel y mismo criterio que el de «sin cuenta asignada»: esa
+          plata no suma a ningún saldo, y el dato queda a la vista en vez de
+          desaparecer. La diferencia es el motivo: acá la cuenta está puesta
+          pero es de otra moneda, y sumarlo sería mezclar monedas. */}
+      {descalzados.length > 0 ? (
+        <div className="glass flex flex-col gap-2 rounded-2xl border-amber-400/25 bg-amber-400/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-amber-300 tabular-nums">
+              {descalzados.length} cobro(s) en una cuenta de otra moneda
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground text-pretty">
+              {descalzados
+                .slice(0, 3)
+                .map(
+                  (d) =>
+                    `${d.concepto} (${formatMoneyWithCode(d.amount, d.currency)} en ${accounts.find((a) => a.id === d.accountId)?.name ?? 'cuenta borrada'})`,
+                )
+                .join(', ')}
+              {descalzados.length > 3 ? ` y ${descalzados.length - 3} más` : ''}
+              . No suman a ningún saldo: una cuenta tiene una sola moneda. Se
+              arregla moviéndolos a una cuenta de su moneda, o corrigiendo la
+              moneda del cobro.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0"
+            render={<Link href="/cobros" />}
+            nativeButton={false}
+          >
+            Ir a Cobros
+          </Button>
+        </div>
+      ) : null}
 
       {unassigned.length > 0 ? (
         <div className="glass flex flex-col gap-2 rounded-2xl border-amber-400/25 bg-amber-400/5 p-4 sm:flex-row sm:items-center sm:justify-between">

@@ -159,7 +159,7 @@ function ProyectosContent() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Proyectos y clientes"
+        title="Proyectos"
         description="Lo que construimos para nosotros y lo que hacemos para clientes, separado."
       >
         {vista === 'clientes' ? <NewClientDialog /> : null}
@@ -363,7 +363,7 @@ export default function ProyectosPage() {
       fallback={
         <div className="flex flex-col gap-6">
           <PageHeader
-            title="Proyectos y clientes"
+            title="Proyectos"
             description="Lo que construimos para nosotros y lo que hacemos para clientes, separado."
           />
         </div>

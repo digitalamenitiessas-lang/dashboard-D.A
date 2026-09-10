@@ -51,6 +51,8 @@ de Supabase, en orden:
 | `11_tickets.sql` | Reclamos y pedidos de clientes |
 | `12_seguimientos.sql` | Acercamientos comerciales con prospectos |
 | `13_mantenimiento_un_solo_estado.sql` | `active` pasa a derivarse de `status` |
+| `14_cobros_en_otra_moneda.sql` | Cobrar en una moneda y saldar en otra |
+| `15_ventana_de_cobro.sql` | El mantenimiento se cobra en una ventana de días |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
 Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11**,
@@ -230,6 +232,22 @@ supabase/         Scripts SQL versionados
   usa el símbolo cuando no hay ambigüedad de contexto; un mensaje que le
   llega a un cliente no tiene ese contexto, y un «$625» se lee como pesos.
   Lo resuelve `montos()` en `lib/mensajes.ts`.
+- **El mantenimiento se cobra en una VENTANA de días, no en un día.** Así se
+  cobra de verdad: el cliente paga «entre el 1 y el 10». Con un solo día, un
+  plan con `dueDay` 1 quedaba vencido el día 2 — mora inexistente nueve días
+  de cada mes y un push de «sin cobrar» todos los meses. Un aviso que grita
+  cuando no pasa nada se empieza a ignorar, y el mes que de verdad no pagaron
+  no lo mira nadie. `dueDayTo` en null = ventana de un día, que es el
+  comportamiento de siempre: los planes ya cargados no cambian hasta que
+  alguien les ponga el último día.
+- **Un cobro puede entrar en una moneda y saldar otra.** Se cotiza en dólares
+  y el cliente paga en pesos al cambio del día: `amount`+`currency` es lo que
+  entró (suma al saldo de su cuenta) y `appliedAmount` es cuánto de lo
+  cotizado salda, en la moneda del proyecto (baja la deuda). Son DOS MONTOS y
+  no una cotización guardada, igual que un cambio de moneda en Caja: la
+  cotización es la división de los dos y queda como dato real. Un cobro en
+  otra moneda SIN equivalente no descuenta nada, y la pantalla del proyecto
+  lo dice en vez de dejar el pendiente alto sin explicación.
 - **El mantenimiento tiene UN estado, y `active` se deriva de él.** Eran dos
   columnas independientes (`active` boolean y `status`) y la lógica exigía las
   dos: una fila con `active` en true y `status` en 'Pausado' desaparecía en

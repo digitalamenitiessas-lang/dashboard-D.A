@@ -650,9 +650,13 @@ export function MovementDialog({
 
               {crossCurrency && out > 0 && income > 0 ? (
                 <p className="rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2 text-xs text-muted-foreground text-pretty">
+                  {/* Este renglón EXISTE para mostrar una conversión entre
+                      dos monedas: es el último lugar del repo donde el
+                      símbolo solo puede quedar. «$100 → $150.000» no dice
+                      qué se cambió por qué. */}
                   <span className="font-medium tabular-nums text-foreground">
-                    {formatMoney(out, fromAccount?.currency)} →{' '}
-                    {formatMoney(income, toAccount?.currency)}
+                    {formatMoneyWithCode(out, fromAccount?.currency ?? 'USD')} →{' '}
+                    {formatMoneyWithCode(income, toAccount?.currency ?? 'USD')}
                   </span>{' '}
                   — completá dos de los tres campos y el tercero se calcula
                   solo.

@@ -104,6 +104,9 @@ function mapMaintenance(r: Row | undefined): Maintenance {
     currency: r?.currency ?? 'USD',
     frequency: r?.frequency ?? 'Mensual',
     dueDay: num(r?.due_day, 1),
+    // Sin `15_ventana_de_cobro.sql` la columna no viene: null es «un solo
+    // día», que es exactamente el comportamiento de antes.
+    dueDayTo: r?.due_day_to == null ? null : num(r.due_day_to),
     services: r?.services ?? [],
     status: r?.status ?? 'Pausado',
     lastCollectedDate: r?.last_collected_date ?? null,
@@ -144,6 +147,9 @@ export function mapPayment(r: Row): Payment {
     projectId: r.project_id,
     concept: str(r.concept),
     amount: num(r.amount),
+    // Sin `14_cobros_en_otra_moneda.sql` la columna no viene y queda null,
+    // que es exactamente lo que significa «salda su propio importe».
+    appliedAmount: r.applied_amount == null ? null : num(r.applied_amount),
     currency: r.currency ?? 'USD',
     paidDate: r.paid_date,
     method: r.method ?? null,
@@ -367,6 +373,7 @@ export function infrastructureToRow(i: Partial<Infrastructure>): Row {
  */
 export function maintenanceToRow(m: Partial<Maintenance>): Row {
   return pick(m, {
+    dueDayTo: 'due_day_to',
     implementationDate: 'implementation_date',
     startDate: 'start_date',
     amount: 'amount',
@@ -401,6 +408,7 @@ export function paymentToRow(p: Partial<Payment>): Row {
   return pick(p, {
     projectId: 'project_id',
     concept: 'concept',
+    appliedAmount: 'applied_amount',
     amount: 'amount',
     currency: 'currency',
     paidDate: 'paid_date',

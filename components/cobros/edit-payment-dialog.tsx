@@ -39,10 +39,13 @@ export function EditPaymentDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, updatePayment, deletePayment } = useStore()
+  const { accounts, projects, updatePayment, deletePayment } = useStore()
   const [concept, setConcept] = React.useState(payment.concept)
   const [amount, setAmount] = React.useState(String(payment.amount))
   const [currency, setCurrency] = React.useState<Currency>(payment.currency)
+  const [applied, setApplied] = React.useState(
+    payment.appliedAmount === null ? '' : String(payment.appliedAmount),
+  )
   const [paidDate, setPaidDate] = React.useState(payment.paidDate)
   const [method, setMethod] = React.useState<string>(payment.method ?? '')
   const [receipt, setReceipt] = React.useState(payment.receipt ?? '')
@@ -61,7 +64,17 @@ export function EditPaymentDialog({
     if (picked && picked.currency !== currency) setAccountId('')
   }, [currency, accountId, accounts])
 
-  const valid = concept.trim() && Number(amount) > 0 && paidDate
+  const project = projects.find((p) => p.id === payment.projectId)
+  /** ¿Este cobro entró en una moneda distinta a la que se cotizó? */
+  const otraMoneda = !!project && currency !== project.currency
+
+  const valid =
+    !!concept.trim() &&
+    Number(amount) > 0 &&
+    !!paidDate &&
+    // Igual que en el alta: en otra moneda el equivalente es obligatorio, o
+    // el cobro queda sin descontar nada de la deuda.
+    (!otraMoneda || Number(applied) > 0)
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -71,6 +84,7 @@ export function EditPaymentDialog({
       concept: concept.trim(),
       amount: Number(amount),
       currency,
+      appliedAmount: otraMoneda ? Number(applied) : null,
       paidDate,
       method: (method || null) as PaymentMethod | null,
       receipt: receipt.trim() || null,
@@ -136,6 +150,43 @@ export function EditPaymentDialog({
                   />
                 </Field>
               </div>
+
+              {/* Acá es donde se arreglan los cobros que ya quedaron cargados
+                  en otra moneda sin equivalente: hasta ahora no descontaban
+                  nada de la deuda y no había forma de decirle al sistema a
+                  cuánto equivalían. */}
+              {otraMoneda && project ? (
+                <div className="flex flex-col gap-2 rounded-xl border border-neon-blue/25 bg-neon-blue/[0.06] p-3">
+                  <p className="text-xs leading-relaxed text-muted-foreground text-pretty">
+                    El proyecto está cotizado en{' '}
+                    <span className="font-medium text-foreground">
+                      {project.currency}
+                    </span>{' '}
+                    y este cobro entró en{' '}
+                    <span className="font-medium text-foreground">
+                      {currency}
+                    </span>
+                    .
+                  </p>
+                  <Field>
+                    <FieldLabel htmlFor="epay-applied">
+                      Equivale a ({project.currency})
+                    </FieldLabel>
+                    <MoneyInput
+                      id="epay-applied"
+                      value={applied}
+                      onValueChange={setApplied}
+                      placeholder="0"
+                    />
+                    {Number(applied) > 0 ? null : (
+                      <p className="text-xs text-amber-300">
+                        Sin esto el cobro no descuenta nada de la deuda del
+                        proyecto.
+                      </p>
+                    )}
+                  </Field>
+                </div>
+              ) : null}
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="epay-paid">Fecha de pago</FieldLabel>

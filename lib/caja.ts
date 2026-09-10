@@ -7,10 +7,26 @@
 import { sumByCurrency, type MoneyByCurrency } from './money'
 import type {
   Account,
+  Currency,
   MaintenanceCharge,
   MoneyMovement,
   Payment,
 } from './types'
+
+/**
+ * Un cobro asignado a una cuenta cuya moneda no coincide con la del cobro.
+ *
+ * No suma a ningún saldo, porque sumarlo sería mezclar monedas. Se devuelve
+ * para que la pantalla lo pueda mostrar, con el mismo criterio que los
+ * cobros sin cuenta asignada: el dato queda a la vista en vez de
+ * desaparecer.
+ */
+export interface Descalzado {
+  accountId: string
+  amount: number
+  currency: Currency
+  concepto: string
+}
 
 export interface CajaInput {
   accounts: Account[]
@@ -51,8 +67,31 @@ export function accountBalances({
     map.set(key, (map.get(key) ?? 0) + amount)
   }
 
-  for (const p of payments) add(collected, p.accountId, p.amount)
-  for (const c of maintenanceCharges) add(collected, c.accountId, c.amount)
+  /**
+   * Un cobro suma al saldo de su cuenta SÓLO si está en la moneda de esa
+   * cuenta.
+   *
+   * Una cuenta tiene una sola moneda —regla de la casa— así que sumarle un
+   * importe en otra es sumar peras con manzanas: un cobro de ARS 250.000
+   * asignado a una cuenta en dólares inflaba el saldo en USD en 250.000 y
+   * nada lo avisaba. Los que no coinciden quedan en `descalzados` para que
+   * la pantalla los muestre, igual que ya hace con los cobros sin cuenta
+   * asignada.
+   */
+  const monedaDe = new Map(accounts.map((a) => [a.id, a.currency]))
+  const suma = (
+    accountId: string | null,
+    amount: number,
+    currency: Currency,
+  ) => {
+    if (!accountId) return
+    // La moneda tiene que coincidir. Ver `cobrosDescalzados()`.
+    if (monedaDe.get(accountId) !== currency) return
+    add(collected, accountId, amount)
+  }
+
+  for (const p of payments) suma(p.accountId, p.amount, p.currency)
+  for (const c of maintenanceCharges) suma(c.accountId, c.amount, c.currency)
   for (const m of movements) {
     add(movedIn, m.toAccountId, m.amountIn)
     add(movedOut, m.fromAccountId, m.amountOut)
@@ -169,4 +208,48 @@ export function impliedRate(movement: MoneyMovement): number | null {
   if (!movement.fromAccountId || !movement.toAccountId) return null
   if (movement.amountOut <= 0 || movement.amountIn <= 0) return null
   return movement.amountIn / movement.amountOut
+}
+
+/**
+ * Los cobros asignados a una cuenta cuya moneda no es la del cobro.
+ *
+ * No suman a ningún saldo —sumarlos sería mezclar monedas, que es la única
+ * regla que respeta toda la app— y antes se sumaban igual: un cobro de
+ * ARS 250.000 asignado a una cuenta en dólares le agregaba 250.000 al saldo
+ * en USD, sin que nada lo avisara. Ahora quedan afuera del cálculo y salen
+ * por acá, con el mismo criterio que los cobros sin cuenta asignada: el dato
+ * a la vista en vez de desaparecido.
+ *
+ * Se arregla de dos formas y las dos son de la persona, no del sistema:
+ * moverlo a una cuenta de su moneda, o corregir la moneda del cobro.
+ */
+export function cobrosDescalzados({
+  accounts,
+  payments,
+  maintenanceCharges,
+}: Omit<CajaInput, 'movements'>): Descalzado[] {
+  const monedaDe = new Map(accounts.map((a) => [a.id, a.currency]))
+  const fuera: Descalzado[] = []
+
+  const revisar = (
+    accountId: string | null,
+    amount: number,
+    currency: Currency,
+    concepto: string,
+  ) => {
+    if (!accountId) return
+    const dela = monedaDe.get(accountId)
+    // Una cuenta que no existe no es un descalce: es un cobro apuntando a
+    // una cuenta borrada, y de eso ya se encarga el FK con SET NULL.
+    if (dela === undefined || dela === currency) return
+    fuera.push({ accountId, amount, currency, concepto })
+  }
+
+  for (const p of payments) {
+    revisar(p.accountId, p.amount, p.currency, p.concept)
+  }
+  for (const c of maintenanceCharges) {
+    revisar(c.accountId, c.amount, c.currency, 'Cobro de mantenimiento')
+  }
+  return fuera
 }

@@ -18,6 +18,7 @@ import {
   Server,
   StickyNote,
   Ticket as TicketIcon,
+  TriangleAlert,
   User,
   Wrench,
 } from 'lucide-react'
@@ -51,13 +52,19 @@ import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
 import {
+  describirVentana,
   hasMaintenancePlan,
   isTicketOpen,
   nextMaintenanceCharge,
   projectFinance,
   ticketAge,
 } from '@/lib/derive'
-import { formatDate, formatMoney, relativeDays } from '@/lib/format'
+import {
+  formatDate,
+  formatMoney,
+  formatMoneyWithCode,
+  relativeDays,
+} from '@/lib/format'
 import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { PROJECT_STATUSES } from '@/lib/types'
 import type { Payment, ProjectStatus, Ticket } from '@/lib/types'
@@ -229,15 +236,49 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* Con código y no con símbolo. Un proyecto tiene UNA moneda, así que
+          en teoría el contexto alcanzaría — pero la moneda del proyecto no se
+          mostraba en ningún lado de esta pantalla, y la tabla de cobros de más
+          abajo puede traer cobros en otra. Con el código pegado al número, el
+          dato viaja con el monto y no depende de que alguien lo haya leído
+          arriba. */}
+      {/* El hueco a la vista, no en silencio. Un cobro en otra moneda sin
+          equivalente cargado no descuenta nada de la deuda: antes eso pasaba
+          y no había forma de enterarse — el pendiente quedaba alto sin
+          explicación. Se arregla entrando al cobro y diciéndole a cuánto
+          equivale. */}
+      {fin.sinEquivalente.length > 0 ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-3.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-300" />
+          <p className="text-sm leading-relaxed text-amber-100/90 text-pretty">
+            <span className="font-medium tabular-nums">
+              {fin.sinEquivalente.length} cobro
+              {fin.sinEquivalente.length === 1 ? '' : 's'} en otra moneda sin
+              equivalente
+            </span>
+            {' — '}
+            {fin.sinEquivalente
+              .map((p) => `${p.concept} (${formatMoneyWithCode(p.amount, p.currency)})`)
+              .join(', ')}
+            . Este proyecto está cotizado en {project.currency}, así que{' '}
+            {fin.sinEquivalente.length === 1 ? 'ese cobro' : 'esos cobros'} no
+            {fin.sinEquivalente.length === 1 ? ' descuenta' : ' descuentan'}{' '}
+            nada del pendiente hasta que se cargue a cuánto{' '}
+            {fin.sinEquivalente.length === 1 ? 'equivale' : 'equivalen'}.
+            Editalos desde la pestaña Cobros.
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Presupuestado"
-          value={formatMoney(fin.quoted, project.currency)}
+          value={formatMoneyWithCode(fin.quoted, project.currency)}
           icon={CircleDollarSign}
         />
         <StatCard
           label="Cobrado"
-          value={formatMoney(fin.collected, project.currency)}
+          value={formatMoneyWithCode(fin.collected, project.currency)}
           hint={
             isEmptyMoney(fin.maintenanceByCurrency)
               ? undefined
@@ -247,7 +288,7 @@ export default function ProjectDetailPage() {
         />
         <StatCard
           label="Pendiente"
-          value={formatMoney(fin.pending, project.currency)}
+          value={formatMoneyWithCode(fin.pending, project.currency)}
           accent={fin.pending > 0 ? 'blue' : 'neutral'}
         />
         <StatCard
@@ -635,7 +676,9 @@ export default function ProjectDetailPage() {
                 <InfoRow label="Monto">
                   {formatMoney(mnt.amount, mnt.currency)} / {mnt.frequency.toLowerCase()}
                 </InfoRow>
-                <InfoRow label="Día de cobro">Día {mnt.dueDay} del período</InfoRow>
+                <InfoRow label="Ventana de cobro">
+                  {describirVentana(mnt)} de cada período
+                </InfoRow>
                 <InfoRow label="Inicio">{formatDate(mnt.startDate)}</InfoRow>
                 <InfoRow label="Último cobro">
                   {formatDate(mnt.lastCollectedDate)}
