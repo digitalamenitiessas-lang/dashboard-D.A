@@ -52,6 +52,7 @@ import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
 import {
+  describirVentana,
   hasMaintenancePlan,
   isTicketOpen,
   nextMaintenanceCharge,
@@ -675,7 +676,9 @@ export default function ProjectDetailPage() {
                 <InfoRow label="Monto">
                   {formatMoney(mnt.amount, mnt.currency)} / {mnt.frequency.toLowerCase()}
                 </InfoRow>
-                <InfoRow label="Día de cobro">Día {mnt.dueDay} del período</InfoRow>
+                <InfoRow label="Ventana de cobro">
+                  {describirVentana(mnt)} de cada período
+                </InfoRow>
                 <InfoRow label="Inicio">{formatDate(mnt.startDate)}</InfoRow>
                 <InfoRow label="Último cobro">
                   {formatDate(mnt.lastCollectedDate)}

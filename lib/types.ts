@@ -162,7 +162,22 @@ export interface Maintenance {
   amount: number
   currency: Currency
   frequency: MaintenanceFrequency
+  /**
+   * Primer día de la ventana de cobro: desde acá se puede cobrar el período.
+   * Tope 28, para que exista en todos los meses.
+   */
   dueDay: number // day of month
+  /**
+   * Último día de la ventana. Null = ventana de un solo día.
+   *
+   * Existe porque así se cobra de verdad: el cliente paga «entre el 1 y el
+   * 10». Con un solo día, un plan con `dueDay` 1 quedaba VENCIDO el día 2, y
+   * eso significaba mostrar mora inexistente nueve días de cada mes y mandar
+   * un push de «mantenimiento sin cobrar» todos los meses. Un aviso que
+   * grita cuando no pasa nada se empieza a ignorar, y el mes que de verdad
+   * no pagaron no lo mira nadie.
+   */
+  dueDayTo: number | null
   services: string[]
   status: MaintenanceStatus
   lastCollectedDate: string | null // ISO

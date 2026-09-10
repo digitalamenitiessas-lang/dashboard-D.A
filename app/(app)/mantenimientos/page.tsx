@@ -43,6 +43,7 @@ import { WhatsappButton } from '@/components/shared/whatsapp-button'
 import { mensajeMantenimientoVencido } from '@/lib/mensajes'
 import { useStore } from '@/lib/store'
 import {
+  describirVentana,
   hasMaintenancePlan,
   maintenancePeriods,
   monthlyMaintenanceValue,
@@ -215,7 +216,7 @@ export default function MantenimientosPage() {
                       </Link>
                       <p className="mt-1 text-xs text-muted-foreground">
                         {formatMoney(m.amount, m.currency)} ·{' '}
-                        {m.frequency.toLowerCase()} · día {m.dueDay}
+                        {m.frequency.toLowerCase()} · {describirVentana(m)}
                       </p>
                     </div>
                     <StatusChip status={project.status} />

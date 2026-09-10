@@ -72,6 +72,12 @@ export function ActivateMaintenanceDialog({
     m?.frequency ?? 'Mensual',
   )
   const [dueDay, setDueDay] = React.useState(String(m?.dueDay || 1))
+  // El último día de la ventana. Arranca en 10 porque es como cobra la
+  // empresa —«entre el 1 y el 10»— y porque el caso de un solo día se
+  // expresa poniendo el mismo número en los dos.
+  const [dueDayTo, setDueDayTo] = React.useState(
+    String(m?.dueDayTo ?? Math.max(m?.dueDay ?? 1, 10)),
+  )
   const [startDate, setStartDate] = React.useState(
     m?.startDate ?? project?.implementationDate ?? todayIso(),
   )
@@ -87,6 +93,12 @@ export function ActivateMaintenanceDialog({
     setCurrency(target.maintenance.currency)
     setFrequency(target.maintenance.frequency)
     setDueDay(String(target.maintenance.dueDay || 1))
+    setDueDayTo(
+      String(
+        target.maintenance.dueDayTo ??
+          Math.max(target.maintenance.dueDay || 1, 10),
+      ),
+    )
     setStartDate(
       target.maintenance.startDate ??
         target.implementationDate ??
@@ -99,7 +111,12 @@ export function ActivateMaintenanceDialog({
   }, [project, target])
 
   const valid =
-    !!target && Number(amount) > 0 && Number(dueDay) >= 1 && Number(dueDay) <= 28
+    !!target &&
+    Number(amount) > 0 &&
+    Number(dueDay) >= 1 &&
+    Number(dueDay) <= 28 &&
+    Number(dueDayTo) >= Number(dueDay) &&
+    Number(dueDayTo) <= 28
 
   async function submit() {
     if (!valid || !target || saving) return
@@ -113,6 +130,7 @@ export function ActivateMaintenanceDialog({
         currency,
         frequency,
         dueDay: Number(dueDay),
+        dueDayTo: Number(dueDayTo),
         services: services
           .split('\n')
           .map((s) => s.trim())
@@ -188,7 +206,7 @@ export function ActivateMaintenanceDialog({
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="am-dueday">Día de vencimiento</FieldLabel>
+              <FieldLabel htmlFor="am-dueday">Cobra desde el día</FieldLabel>
               <Input
                 id="am-dueday"
                 type="number"
@@ -202,6 +220,31 @@ export function ActivateMaintenanceDialog({
               />
             </Field>
           </div>
+          <Field>
+            <FieldLabel htmlFor="am-duedayto">Hasta el día</FieldLabel>
+            <Input
+              id="am-duedayto"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="28"
+              value={dueDayTo}
+              onChange={(e) => setDueDayTo(e.target.value)}
+            />
+            {/* La ventana es lo que evita la mora fantasma: recién pasado
+                este día el período cuenta como vencido y dispara el aviso. */}
+            <p
+              className={
+                Number(dueDayTo) < Number(dueDay)
+                  ? 'text-xs text-amber-300'
+                  : 'text-xs text-muted-foreground'
+              }
+            >
+              {Number(dueDayTo) < Number(dueDay)
+                ? 'No puede cerrar antes de abrir.'
+                : `Se cobra ${Number(dueDayTo) === Number(dueDay) ? `el día ${dueDay}` : `del ${dueDay} al ${dueDayTo}`} de cada período. Después de esa fecha cuenta como vencido y avisa.`}
+            </p>
+          </Field>
           <Field>
             <FieldLabel htmlFor="am-start">Fecha de inicio</FieldLabel>
             <Input
@@ -418,6 +461,9 @@ export function EditMaintenanceDialog({
     m.frequency,
   )
   const [dueDay, setDueDay] = React.useState(String(m.dueDay || 1))
+  const [dueDayTo, setDueDayTo] = React.useState(
+    String(m.dueDayTo ?? m.dueDay ?? 1),
+  )
   const [startDate, setStartDate] = React.useState(
     m.startDate ?? m.implementationDate ?? todayIso(),
   )
@@ -429,13 +475,16 @@ export function EditMaintenanceDialog({
     name.trim() !== '' &&
     Number(amount) > 0 &&
     Number(dueDay) >= 1 &&
-    Number(dueDay) <= 28
+    Number(dueDay) <= 28 &&
+    Number(dueDayTo) >= Number(dueDay) &&
+    Number(dueDayTo) <= 28
 
   const cambiaPlata =
     Number(amount) !== m.amount || currency !== m.currency
   const cambiaCalendario =
     frequency !== m.frequency ||
     Number(dueDay) !== m.dueDay ||
+    Number(dueDayTo) !== (m.dueDayTo ?? m.dueDay) ||
     startDate !== (m.startDate ?? m.implementationDate ?? '')
 
   async function submit() {
@@ -458,6 +507,7 @@ export function EditMaintenanceDialog({
       currency,
       frequency,
       dueDay: Number(dueDay),
+      dueDayTo: Number(dueDayTo),
       startDate,
       status,
       services: services
@@ -524,7 +574,7 @@ export function EditMaintenanceDialog({
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="em-dueday">Día de vencimiento</FieldLabel>
+              <FieldLabel htmlFor="em-dueday">Cobra desde el día</FieldLabel>
               <Input
                 id="em-dueday"
                 type="number"
@@ -536,6 +586,29 @@ export function EditMaintenanceDialog({
               />
             </Field>
           </div>
+          <Field>
+            <FieldLabel htmlFor="em-duedayto">Hasta el día</FieldLabel>
+            <Input
+              id="em-duedayto"
+              type="number"
+              inputMode="numeric"
+              min="1"
+              max="28"
+              value={dueDayTo}
+              onChange={(e) => setDueDayTo(e.target.value)}
+            />
+            <p
+              className={
+                Number(dueDayTo) < Number(dueDay)
+                  ? 'text-xs text-amber-300'
+                  : 'text-xs text-muted-foreground'
+              }
+            >
+              {Number(dueDayTo) < Number(dueDay)
+                ? 'No puede cerrar antes de abrir.'
+                : `Se cobra ${Number(dueDayTo) === Number(dueDay) ? `el día ${dueDay}` : `del ${dueDay} al ${dueDayTo}`} de cada período. Después de esa fecha cuenta como vencido y avisa.`}
+            </p>
+          </Field>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Field>

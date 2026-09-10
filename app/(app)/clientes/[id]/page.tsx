@@ -29,7 +29,7 @@ import { DetailCard, InfoRow } from '@/components/proyectos/detail-parts'
 import { EditClientDialog } from '@/components/clientes/edit-client-dialog'
 import { useStore } from '@/lib/store'
 import { enriquecerClientes } from '@/lib/clientes'
-import { nextMaintenanceCharge } from '@/lib/derive'
+import { describirVentana, nextMaintenanceCharge } from '@/lib/derive'
 import { formatDate, formatMoney, relativeDays } from '@/lib/format'
 import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { mensajeCobroCliente } from '@/lib/mensajes'
@@ -204,7 +204,7 @@ export default function ClienteDetallePage() {
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground tabular-nums">
-                      {m.frequency} · día {m.dueDay}
+                      {m.frequency} · {describirVentana(m)}
                       {next
                         ? ` · próximo ${formatDate(next)} (${relativeDays(next).toLowerCase()})`
                         : ''}

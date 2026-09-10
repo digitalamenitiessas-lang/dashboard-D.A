@@ -151,6 +151,29 @@ function toIso(date: Date): string {
 }
 
 /**
+ * El último día de la ventana de cobro del período que arranca en `desde`.
+ *
+ * Con `dueDayTo` en null la ventana es de un solo día y esto devuelve el
+ * mismo día: el comportamiento de siempre, que es lo que tienen todos los
+ * planes hasta que alguien les cargue el último día.
+ */
+export function cierreDeVentana(m: Maintenance, desde: string): string {
+  const hasta = m.dueDayTo
+  if (hasta === null) return desde
+  const d = new Date(desde + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return desde
+  // Igual que el arranque: tope 28 y nunca antes de abrir.
+  const dia = Math.max(m.dueDay, Math.min(hasta, 28))
+  return toIso(new Date(d.getFullYear(), d.getMonth(), dia))
+}
+
+/** Cómo se lee la ventana de cobro: «día 5» o «del 1 al 10». */
+export function describirVentana(m: Maintenance): string {
+  if (m.dueDayTo === null || m.dueDayTo === m.dueDay) return `día ${m.dueDay}`
+  return `del ${m.dueDay} al ${m.dueDayTo}`
+}
+
+/**
  * Serie de vencimientos del plan a partir del ancla, del más viejo al más
  * nuevo. El ancla es el arranque del servicio, no un cobro: el primer
  * vencimiento cae un período después, porque se factura el período cumplido.
@@ -191,7 +214,11 @@ function dueDateSeries(
   let next: string | null = null
   for (let i = 0; i < MAX_PERIODS; i++) {
     const iso = toIso(cursor)
-    if ((daysUntil(iso, today) ?? 0) >= 0) {
+    // Un período está vencido cuando cerró su VENTANA, no cuando pasó el día
+    // en que se puede empezar a cobrar. Con la ventana del 1 al 10, el día 2
+    // el período todavía está abierto: mostrarlo como mora sería inventar una
+    // deuda que no existe, nueve días de cada mes.
+    if ((daysUntil(cierreDeVentana(m, iso), today) ?? 0) >= 0) {
       next = iso
       break
     }
