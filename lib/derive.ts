@@ -43,6 +43,12 @@ export interface ProjectFinance {
   pendingByCurrency: MoneyByCurrency
   /** Lo cobrado por encima de lo cotizado. Se muestra aparte, no se compensa. */
   overpaidByCurrency: MoneyByCurrency
+  /**
+   * Cobros que entraron en otra moneda y no dicen a cuánto de lo cotizado
+   * equivalen, así que no descuentan nada. La pantalla los muestra en vez de
+   * dejar la deuda alta sin explicación.
+   */
+  sinEquivalente: Payment[]
 }
 
 export function projectFinance(
@@ -53,11 +59,30 @@ export function projectFinance(
   // Every stored payment is money already received.
   const paid = payments.filter((p) => p.projectId === project.id)
 
-  // Only payments in the project's own currency can be discounted from the
-  // quote; anything else is surfaced separately instead of being summed in.
-  const collected = paid
-    .filter((p) => p.currency === project.currency)
-    .reduce((sum, p) => sum + p.amount, 0)
+  /**
+   * Lo cobrado que descuenta de lo cotizado.
+   *
+   * Un cobro en la moneda del proyecto descuenta su propio importe. Uno en
+   * otra moneda descuenta lo que diga `appliedAmount`, que está en la moneda
+   * del proyecto — es el caso real de la empresa: se cotiza en dólares y el
+   * cliente paga en pesos al cambio del día.
+   *
+   * Antes, un cobro en otra moneda simplemente se filtraba y no descontaba
+   * nada. El comentario decía que se «surfaceaba aparte» y no se surfaceaba
+   * en ninguna parte: la deuda del proyecto no bajaba y nadie se enteraba.
+   * Ahora, si falta el equivalente, el cobro sigue sin descontar —no hay
+   * cotización que inventar— pero queda contado en `sinEquivalente` para que
+   * la pantalla lo pueda decir.
+   */
+  const collected = paid.reduce((sum, p) => {
+    if (p.currency === project.currency) return sum + p.amount
+    return sum + (p.appliedAmount ?? 0)
+  }, 0)
+
+  /** Cobros en otra moneda a los que nadie les cargó el equivalente. */
+  const sinEquivalente = paid.filter(
+    (p) => p.currency !== project.currency && p.appliedAmount === null,
+  )
 
   const paidByCurrency = sumByCurrency(paid)
   const maintenanceByCurrency = sumByCurrency(
@@ -77,6 +102,7 @@ export function projectFinance(
     collectedByCurrency: mergeMoney(paidByCurrency, maintenanceByCurrency),
     pendingByCurrency: { [project.currency]: Math.max(balance, 0) },
     overpaidByCurrency: { [project.currency]: Math.max(-balance, 0) },
+    sinEquivalente,
   }
 }
 

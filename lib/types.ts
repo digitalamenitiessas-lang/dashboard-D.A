@@ -70,8 +70,26 @@ export interface Payment {
   id: string
   projectId: string
   concept: string
+  /** Lo que entró de verdad, en `currency`. Es lo que suma al saldo de su cuenta. */
   amount: number
   currency: Currency
+  /**
+   * Cuánto de lo COTIZADO salda, en la moneda del PROYECTO.
+   *
+   * Null = salda su propio importe, que es el caso normal de un cobro en la
+   * misma moneda que el proyecto.
+   *
+   * Existe para el caso real y más frecuente de la empresa: se cotiza en
+   * dólares y el cliente paga en pesos al cambio del día. Sin esto había que
+   * elegir entre perder cuántos pesos entraron —y dejar mal el saldo de la
+   * cuenta— o que la deuda del proyecto no bajara, en silencio.
+   *
+   * Son DOS MONTOS y no una cotización guardada, que es la misma decisión que
+   * ya tomó `MoneyMovement` para un cambio de moneda: la cotización de esa
+   * operación es la división de los dos, y queda como dato real de lo que
+   * pasó ese día en vez de un número estimado.
+   */
+  appliedAmount: number | null
   paidDate: string // ISO
   method: PaymentMethod | null
   receipt: string | null

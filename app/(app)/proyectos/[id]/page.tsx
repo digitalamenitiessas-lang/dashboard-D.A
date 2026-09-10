@@ -18,6 +18,7 @@ import {
   Server,
   StickyNote,
   Ticket as TicketIcon,
+  TriangleAlert,
   User,
   Wrench,
 } from 'lucide-react'
@@ -240,6 +241,34 @@ export default function ProjectDetailPage() {
           abajo puede traer cobros en otra. Con el código pegado al número, el
           dato viaja con el monto y no depende de que alguien lo haya leído
           arriba. */}
+      {/* El hueco a la vista, no en silencio. Un cobro en otra moneda sin
+          equivalente cargado no descuenta nada de la deuda: antes eso pasaba
+          y no había forma de enterarse — el pendiente quedaba alto sin
+          explicación. Se arregla entrando al cobro y diciéndole a cuánto
+          equivale. */}
+      {fin.sinEquivalente.length > 0 ? (
+        <div className="flex items-start gap-3 rounded-2xl border border-amber-400/25 bg-amber-400/[0.07] p-3.5">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-amber-300" />
+          <p className="text-sm leading-relaxed text-amber-100/90 text-pretty">
+            <span className="font-medium tabular-nums">
+              {fin.sinEquivalente.length} cobro
+              {fin.sinEquivalente.length === 1 ? '' : 's'} en otra moneda sin
+              equivalente
+            </span>
+            {' — '}
+            {fin.sinEquivalente
+              .map((p) => `${p.concept} (${formatMoneyWithCode(p.amount, p.currency)})`)
+              .join(', ')}
+            . Este proyecto está cotizado en {project.currency}, así que{' '}
+            {fin.sinEquivalente.length === 1 ? 'ese cobro' : 'esos cobros'} no
+            {fin.sinEquivalente.length === 1 ? ' descuenta' : ' descuentan'}{' '}
+            nada del pendiente hasta que se cargue a cuánto{' '}
+            {fin.sinEquivalente.length === 1 ? 'equivale' : 'equivalen'}.
+            Editalos desde la pestaña Cobros.
+          </p>
+        </div>
+      ) : null}
+
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Presupuestado"

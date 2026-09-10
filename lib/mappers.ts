@@ -144,6 +144,9 @@ export function mapPayment(r: Row): Payment {
     projectId: r.project_id,
     concept: str(r.concept),
     amount: num(r.amount),
+    // Sin `14_cobros_en_otra_moneda.sql` la columna no viene y queda null,
+    // que es exactamente lo que significa «salda su propio importe».
+    appliedAmount: r.applied_amount == null ? null : num(r.applied_amount),
     currency: r.currency ?? 'USD',
     paidDate: r.paid_date,
     method: r.method ?? null,
@@ -401,6 +404,7 @@ export function paymentToRow(p: Partial<Payment>): Row {
   return pick(p, {
     projectId: 'project_id',
     concept: 'concept',
+    appliedAmount: 'applied_amount',
     amount: 'amount',
     currency: 'currency',
     paidDate: 'paid_date',
