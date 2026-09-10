@@ -53,6 +53,7 @@ de Supabase, en orden:
 | `13_mantenimiento_un_solo_estado.sql` | `active` pasa a derivarse de `status` |
 | `14_cobros_en_otra_moneda.sql` | Cobrar en una moneda y saldar en otra |
 | `15_ventana_de_cobro.sql` | El mantenimiento se cobra en una ventana de días |
+| `16_facturas.sql` | Facturas de cliente y su imputación de cobros |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
 Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11**,
@@ -240,6 +241,19 @@ supabase/         Scripts SQL versionados
   no lo mira nadie. `dueDayTo` en null = ventana de un día, que es el
   comportamiento de siempre: los planes ya cargados no cambian hasta que
   alguien les ponga el último día.
+- **Una factura no tiene columna de estado.** Pendiente / Parcial / Cancelada
+  salen de comparar su importe con los cobros imputados (`lib/facturas.ts`).
+  Por eso «que el cobro mueva el estado» no existe como trabajo: editar,
+  borrar o reimputar un cobro reacomoda todo solo, y no llega el día en que
+  una columna diga una cosa y los cobros otra.
+- **Una factura no tiene moneda propia**: está en la del proyecto. Una moneda
+  propia abriría una tercera conversión —cotizado, facturado y cobrado en tres
+  monedas— y no hay cotización cargada para resolverla.
+- **La deuda son dos números con nombres distintos, no dos «pendientes».**
+  `Pendiente de cobro` es lo facturado sin cobrar, y se suma factura por
+  factura con piso en cero: si no, una cobrada de más taparía la deuda de otra.
+  `Sin facturar` es cotizado − facturado, que no es deuda pero es plata que
+  hay que facturar.
 - **Un cobro puede entrar en una moneda y saldar otra.** Se cotiza en dólares
   y el cliente paga en pesos al cambio del día: `amount`+`currency` es lo que
   entró (suma al saldo de su cuenta) y `appliedAmount` es cuánto de lo

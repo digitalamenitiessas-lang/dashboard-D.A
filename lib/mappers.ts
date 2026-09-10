@@ -14,6 +14,7 @@ import type {
   MoneyMovement,
   Note,
   Payment,
+  Factura,
   Project,
   Seguimiento,
   Task,
@@ -150,6 +151,8 @@ export function mapPayment(r: Row): Payment {
     // Sin `14_cobros_en_otra_moneda.sql` la columna no viene y queda null,
     // que es exactamente lo que significa «salda su propio importe».
     appliedAmount: r.applied_amount == null ? null : num(r.applied_amount),
+    // Sin `16_facturas.sql` la columna no viene: null es «sin imputar».
+    facturaId: r.factura_id ?? null,
     currency: r.currency ?? 'USD',
     paidDate: r.paid_date,
     method: r.method ?? null,
@@ -299,6 +302,30 @@ export function normalizarProspecto(valor: string): string {
   return valor.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
+export function mapFactura(r: Row): Factura {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    numero: str(r.numero),
+    emitidaOn: r.emitida_on,
+    venceOn: r.vence_on ?? null,
+    importe: num(r.importe),
+    notas: str(r.notas),
+    createdAt: r.created_at,
+  }
+}
+
+export function facturaToRow(f: Partial<Factura>): Row {
+  return pick(f, {
+    projectId: 'project_id',
+    numero: 'numero',
+    emitidaOn: 'emitida_on',
+    venceOn: 'vence_on',
+    importe: 'importe',
+    notas: 'notas',
+  })
+}
+
 export function mapActivity(r: Row): ActivityEntry {
   return {
     id: r.id,
@@ -409,6 +436,7 @@ export function paymentToRow(p: Partial<Payment>): Row {
     projectId: 'project_id',
     concept: 'concept',
     appliedAmount: 'applied_amount',
+    facturaId: 'factura_id',
     amount: 'amount',
     currency: 'currency',
     paidDate: 'paid_date',

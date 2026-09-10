@@ -96,6 +96,14 @@ export interface Payment {
   notes: string
   /** Which account the money landed in. Null = not assigned yet. */
   accountId: string | null
+  /**
+   * Qué factura salda este cobro. Null = cobro sin imputar — un anticipo
+   * antes de facturar, por ejemplo.
+   *
+   * Un cobro salda UNA factura; una factura recibe varios cobros, y de ahí
+   * sale el estado Parcial.
+   */
+  facturaId: string | null
 }
 
 export const TASK_KINDS = ['interno', 'cliente', 'bloqueador'] as const
@@ -545,5 +553,45 @@ export interface Seguimiento {
   estado: SeguimientoEstado
   /** Cuándo hay que retomar. Null = no quedó fecha. */
   nextContactOn: string | null // ISO date
+  createdAt: string
+}
+
+// ---------------------------------------------------------------------
+// Facturas de cliente
+// ---------------------------------------------------------------------
+
+export const FACTURA_ESTADOS = ['Pendiente', 'Parcial', 'Cancelada'] as const
+
+export type FacturaEstado = (typeof FACTURA_ESTADOS)[number]
+
+/**
+ * Lo que se le facturó a un cliente por un proyecto.
+ *
+ * Es un REGISTRO INTERNO, no un comprobante de AFIP: sin tipo A/B/C, sin
+ * punto de venta, sin IVA discriminado y sin retenciones. Decisión tomada; el
+ * día que haya que espejar lo que se emite de verdad, esos campos se agregan.
+ *
+ * **No tiene estado.** Pendiente / Parcial / Cancelada salen de comparar
+ * `importe` con lo que se le imputó de cobros (`lib/facturas.ts`). Es la
+ * regla de siempre acá —lo derivado no se guarda— y además hace que «que el
+ * cobro mueva el estado» no exista como trabajo: no hay nada que mover, y no
+ * llega el día en que una columna diga una cosa y los cobros otra.
+ *
+ * **No tiene moneda propia**: está en la del proyecto. Una moneda propia
+ * abriría una tercera conversión —cotizado, facturado y cobrado en tres
+ * monedas— y este sistema no tiene cotización cargada para resolverla. Con la
+ * del proyecto, el `appliedAmount` de un cobro salda la factura sin ninguna
+ * cuenta extra: es el mismo número que ya salda lo cotizado.
+ */
+export interface Factura {
+  id: string
+  projectId: string
+  numero: string
+  emitidaOn: string // ISO date
+  /** Null = sin plazo pactado. */
+  venceOn: string | null
+  /** En la moneda del PROYECTO. */
+  importe: number
+  notas: string
   createdAt: string
 }

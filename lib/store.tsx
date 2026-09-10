@@ -23,7 +23,9 @@ import {
   mapTask,
   movementToRow,
   noteToRow,
+  facturaToRow,
   maintenanceChargeToRow,
+  mapFactura,
   mapSeguimiento,
   mapTicket,
   paymentToRow,
@@ -37,6 +39,7 @@ import type {
   ActivityEntry,
   Client,
   Development,
+  Factura,
   FixedExpense,
   InfraCost,
   Infrastructure,
@@ -97,6 +100,11 @@ interface StoreValue {
    * prospecto y su estado se derivan con `agruparSeguimientos()`.
    */
   seguimientos: Seguimiento[]
+  /**
+   * Lo facturado. El estado de cada factura NO está acá: se calcula con
+   * `lib/facturas.ts` a partir de los cobros imputados.
+   */
+  facturas: Factura[]
   /** False until `08_caja.sql` has been run on the database. */
   cajaReady: boolean
   /** False mientras no se haya corrido `10_gastos.sql`. Mismo degradado. */
@@ -105,6 +113,8 @@ interface StoreValue {
   ticketsReady: boolean
   /** False mientras no se haya corrido `12_seguimientos.sql`. Ídem. */
   seguimientosReady: boolean
+  /** False mientras no se haya corrido `16_facturas.sql`. Ídem. */
+  facturasReady: boolean
   refresh: () => Promise<void>
 
   // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
@@ -213,6 +223,14 @@ interface StoreValue {
   ) => Promise<boolean>
   deleteSeguimiento: (id: string) => Promise<boolean>
 
+  // facturas
+  //
+  // No hay `setEstadoFactura`: el estado sale de los cobros imputados. Para
+  // moverlo se imputa o se desimputa un cobro, que es lo que de verdad pasó.
+  addFactura: (factura: Omit<Factura, 'id' | 'createdAt'>) => Promise<boolean>
+  updateFactura: (id: string, patch: Partial<Factura>) => Promise<boolean>
+  deleteFactura: (id: string) => Promise<boolean>
+
   // maintenance
   activateMaintenance: (
     id: string,
@@ -315,10 +333,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [fixedExpenses, setFixedExpenses] = React.useState<FixedExpense[]>([])
   const [tickets, setTickets] = React.useState<Ticket[]>([])
   const [seguimientos, setSeguimientos] = React.useState<Seguimiento[]>([])
+  const [facturas, setFacturas] = React.useState<Factura[]>([])
   const [cajaReady, setCajaReady] = React.useState(true)
   const [gastosReady, setGastosReady] = React.useState(true)
   const [ticketsReady, setTicketsReady] = React.useState(true)
   const [seguimientosReady, setSeguimientosReady] = React.useState(true)
+  const [facturasReady, setFacturasReady] = React.useState(true)
 
   /**
    * Surfaces the failure to the user and keeps it out of the happy path.
@@ -340,7 +360,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg] = await Promise.all([
+      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg, fa] = await Promise.all([
         supabase
           .from('projects')
           .select(PROJECT_SELECT)
@@ -394,6 +414,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .order('prospecto_key')
           .order('contacted_on', { ascending: false })
           .order('created_at', { ascending: false }),
+        supabase
+          .from('facturas')
+          .select('*')
+          .order('emitida_on', { ascending: false }),
       ])
 
       // Caja is the newest module: if 08_caja.sql hasn't been run yet its
@@ -422,6 +446,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const seguimientosMissing = missing(sg.error)
       setSeguimientosReady(!seguimientosMissing)
 
+      const facturasMissing = missing(fa.error)
+      setFacturasReady(!facturasMissing)
+
       const firstError =
         p.error ||
         c.error ||
@@ -433,7 +460,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         (cajaMissing ? null : acc.error || mov.error) ||
         (gastosMissing ? null : fe.error) ||
         (ticketsMissing ? null : tk.error) ||
-        (seguimientosMissing ? null : sg.error)
+        (seguimientosMissing ? null : sg.error) ||
+        (facturasMissing ? null : fa.error)
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -448,6 +476,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setFixedExpenses((fe.data ?? []).map(mapFixedExpense))
       setTickets((tk.data ?? []).map(mapTicket))
       setSeguimientos((sg.data ?? []).map(mapSeguimiento))
+      setFacturas((fa.data ?? []).map(mapFactura))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -1213,6 +1242,88 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   )
 
   // -------------------------------------------------------------------
+  // Facturas
+  //
+  // Sin métodos de estado: Pendiente/Parcial/Cancelada salen de los cobros
+  // imputados (`lib/facturas.ts`). Mover el estado es imputar o desimputar
+  // un cobro, que es lo que de verdad ocurrió.
+  // -------------------------------------------------------------------
+  const addFactura = React.useCallback(
+    async (factura: Omit<Factura, 'id' | 'createdAt'>) => {
+      try {
+        const { data, error } = await supabase
+          .from('facturas')
+          .insert(facturaToRow(factura))
+          .select()
+          .single()
+        if (error) throw error
+        setFacturas((prev) =>
+          [mapFactura(data), ...prev].sort((a, b) =>
+            b.emitidaOn.localeCompare(a.emitidaOn),
+          ),
+        )
+        await logActivity({
+          projectId: factura.projectId,
+          type: 'pago',
+          message: `Factura ${factura.numero} emitida`,
+        })
+        return true
+      } catch (e) {
+        fail('guardar la factura', e)
+        return false
+      }
+    },
+    [supabase, logActivity, fail],
+  )
+
+  const updateFactura = React.useCallback(
+    async (id: string, patch: Partial<Factura>) => {
+      try {
+        const row = facturaToRow(patch)
+        if (Object.keys(row).length === 0) return true
+        const { data, error } = await supabase
+          .from('facturas')
+          .update(row)
+          .eq('id', id)
+          .select()
+          .single()
+        if (error) throw error
+        setFacturas((prev) =>
+          prev
+            .map((f) => (f.id === id ? mapFactura(data) : f))
+            .sort((a, b) => b.emitidaOn.localeCompare(a.emitidaOn)),
+        )
+        return true
+      } catch (e) {
+        fail('guardar la factura', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
+  const deleteFactura = React.useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase.from('facturas').delete().eq('id', id)
+        if (error) throw error
+        setFacturas((prev) => prev.filter((f) => f.id !== id))
+        // El FK de `payments.factura_id` es SET NULL: los cobros que la
+        // saldaban siguen existiendo y quedan sin imputar, que es lo correcto
+        // —la plata entró igual— y la pantalla los muestra como tales.
+        setPayments((prev) =>
+          prev.map((p) => (p.facturaId === id ? { ...p, facturaId: null } : p)),
+        )
+        return true
+      } catch (e) {
+        fail('eliminar la factura', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
+  // -------------------------------------------------------------------
   // Maintenance
   // -------------------------------------------------------------------
 
@@ -1702,10 +1813,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       fixedExpenses,
       tickets,
       seguimientos,
+      facturas,
       cajaReady,
       gastosReady,
       ticketsReady,
       seguimientosReady,
+      facturasReady,
       refresh,
       addProject,
       updateProject,
@@ -1745,6 +1858,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addSeguimiento,
       updateSeguimiento,
       deleteSeguimiento,
+      addFactura,
+      updateFactura,
+      deleteFactura,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,
@@ -1766,10 +1882,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       fixedExpenses,
       tickets,
       seguimientos,
+      facturas,
       cajaReady,
       gastosReady,
       ticketsReady,
       seguimientosReady,
+      facturasReady,
       refresh,
       addProject,
       updateProject,
@@ -1809,6 +1927,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       addSeguimiento,
       updateSeguimiento,
       deleteSeguimiento,
+      addFactura,
+      updateFactura,
+      deleteFactura,
       activateMaintenance,
       updateMaintenance,
       collectMaintenance,
