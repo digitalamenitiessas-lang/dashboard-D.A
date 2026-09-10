@@ -47,7 +47,13 @@ import {
   maintenancePeriods,
   monthlyMaintenanceValue,
 } from '@/lib/derive'
-import { formatDate, formatMoney, relativeDays, daysUntil } from '@/lib/format'
+import {
+  daysUntil,
+  formatDate,
+  formatMoney,
+  formatMoneyWithCode,
+  relativeDays,
+} from '@/lib/format'
 import {
   formatMoneyByCurrency,
   isEmptyMoney,
@@ -449,8 +455,10 @@ export default function MantenimientosPage() {
                       {projectName(charge.projectId)}
                     </Link>
                   </TableCell>
+                  {/* Mismo motivo que en /cobros: el historial mezcla todos
+                      los proyectos, así que el símbolo solo es ambiguo. */}
                   <TableCell className="text-right font-semibold tabular-nums">
-                    {formatMoney(charge.amount, charge.currency)}
+                    {formatMoneyWithCode(charge.amount, charge.currency)}
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {charge.method ?? '—'}

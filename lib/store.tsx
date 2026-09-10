@@ -31,7 +31,7 @@ import {
   seguimientoToRow,
   ticketToRow,
 } from './mappers'
-import { formatMoney, todayIso } from './format'
+import { formatMoney, formatMoneyWithCode, todayIso } from './format'
 import type {
   Account,
   ActivityEntry,
@@ -1364,9 +1364,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         await recalcularUltimoCobro(id)
 
         await reloadProject(id)
-        // El monto va formateado y con su moneda: acá el «$» solo no dice
-        // nada, que es justamente el punto de toda la app.
-        const collected = formatMoney(data.amount, project.maintenance.currency)
+        // El monto va con el CÓDIGO de moneda, no con el símbolo. El
+        // comentario decía esto desde el principio pero el código usaba
+        // `formatMoney`, que rinde un «$» pelado: el historial de actividad
+        // mezcla proyectos en USD y en ARS, así que era exactamente el lugar
+        // donde el símbolo solo no dice nada.
+        const collected = formatMoneyWithCode(
+          data.amount,
+          project.maintenance.currency,
+        )
         await logActivity({
           projectId: id,
           type: 'mantenimiento',

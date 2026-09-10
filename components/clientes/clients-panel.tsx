@@ -17,13 +17,8 @@ import { WhatsappButton } from '@/components/shared/whatsapp-button'
 import { mensajeCobroCliente } from '@/lib/mensajes'
 import { formatearTelefono } from '@/lib/telefono'
 import { useStore } from '@/lib/store'
-import { projectFinance } from '@/lib/derive'
-import {
-  collectionRatio,
-  formatMoneyByCurrency,
-  isEmptyMoney,
-  mergeMoney,
-} from '@/lib/money'
+import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
+import { enriquecerClientes, proyectosSinCliente } from '@/lib/clientes'
 import type { Client, Project } from '@/lib/types'
 
 /**
@@ -53,45 +48,20 @@ export function ClientsPanel({
   const { clients, projects, payments, maintenanceCharges } = useStore()
   const [editTarget, setEditTarget] = React.useState<Client | null>(null)
 
-  const terceros = React.useMemo(
-    () => projects.filter((p) => p.type === 'terceros'),
-    [projects],
-  )
-
-  /** Terceros a los que nadie les asignó cliente todavía. */
-  const huerfanos = React.useMemo(
-    () => terceros.filter((p) => !p.clientId),
-    [terceros],
-  )
-
-  const enriched = React.useMemo(() => {
-    return clients.map((client) => {
-      const clientProjects = terceros.filter((p) => p.clientId === client.id)
-      const finances = clientProjects.map((p) =>
-        projectFinance(p, payments, maintenanceCharges),
-      )
-      const quoted = mergeMoney(...finances.map((f) => f.quotedByCurrency))
-      const paid = mergeMoney(...finances.map((f) => f.paidByCurrency))
-      const maintenance = mergeMoney(
-        ...finances.map((f) => f.maintenanceByCurrency),
-      )
-      return {
-        client,
-        projects: clientProjects,
-        quoted,
-        paid,
-        maintenance,
-        // Se mide contra lo cotizado, así que los mantenimientos quedan
-        // afuera. El piso en cero viene de cada proyecto: si uno está
-        // cobrado de más, eso no borra la deuda de otro.
-        pending: mergeMoney(...finances.map((f) => f.pendingByCurrency)),
-        pct: collectionRatio(quoted, paid),
-        activeMaintenances: clientProjects.filter(
-          (p) => p.maintenance.status === 'Activo',
-        ),
-      }
-    })
-  }, [clients, terceros, payments, maintenanceCharges])
+  const { enriched, huerfanos } = React.useMemo(() => {
+    // El cálculo vive en lib/clientes.ts porque lo comparte con la sección
+    // /clientes: dos pantallas calculando «cuánto me debe este cliente» por
+    // su cuenta terminan mostrando números distintos del mismo dato.
+    return {
+      enriched: enriquecerClientes({
+        clients,
+        projects,
+        payments,
+        maintenanceCharges,
+      }),
+      huerfanos: proyectosSinCliente(projects),
+    }
+  }, [clients, projects, payments, maintenanceCharges])
 
   const q = query.trim().toLowerCase()
 

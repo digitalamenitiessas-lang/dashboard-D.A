@@ -57,7 +57,12 @@ import {
   projectFinance,
   ticketAge,
 } from '@/lib/derive'
-import { formatDate, formatMoney, relativeDays } from '@/lib/format'
+import {
+  formatDate,
+  formatMoney,
+  formatMoneyWithCode,
+  relativeDays,
+} from '@/lib/format'
 import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { PROJECT_STATUSES } from '@/lib/types'
 import type { Payment, ProjectStatus, Ticket } from '@/lib/types'
@@ -229,15 +234,21 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
+      {/* Con código y no con símbolo. Un proyecto tiene UNA moneda, así que
+          en teoría el contexto alcanzaría — pero la moneda del proyecto no se
+          mostraba en ningún lado de esta pantalla, y la tabla de cobros de más
+          abajo puede traer cobros en otra. Con el código pegado al número, el
+          dato viaja con el monto y no depende de que alguien lo haya leído
+          arriba. */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label="Presupuestado"
-          value={formatMoney(fin.quoted, project.currency)}
+          value={formatMoneyWithCode(fin.quoted, project.currency)}
           icon={CircleDollarSign}
         />
         <StatCard
           label="Cobrado"
-          value={formatMoney(fin.collected, project.currency)}
+          value={formatMoneyWithCode(fin.collected, project.currency)}
           hint={
             isEmptyMoney(fin.maintenanceByCurrency)
               ? undefined
@@ -247,7 +258,7 @@ export default function ProjectDetailPage() {
         />
         <StatCard
           label="Pendiente"
-          value={formatMoney(fin.pending, project.currency)}
+          value={formatMoneyWithCode(fin.pending, project.currency)}
           accent={fin.pending > 0 ? 'blue' : 'neutral'}
         />
         <StatCard

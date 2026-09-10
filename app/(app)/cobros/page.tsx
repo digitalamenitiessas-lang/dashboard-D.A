@@ -38,7 +38,7 @@ import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
 import { useStore } from '@/lib/store'
 import { projectFinance } from '@/lib/derive'
-import { formatDate, formatMoney } from '@/lib/format'
+import { formatDate, formatMoney, formatMoneyWithCode } from '@/lib/format'
 import {
   collectionRatio,
   formatMoneyByCurrency,
@@ -277,8 +277,11 @@ export default function CobrosPage() {
                         {projectName(row.projectId)}
                       </Link>
                     </TableCell>
+                    {/* Con código y no con símbolo: esta tabla apila cobros
+                        de proyectos en monedas distintas, y USD y ARS
+                        comparten el «$». Un «$300» acá no se puede leer. */}
                     <TableCell className="text-right font-semibold tabular-nums">
-                      {formatMoney(row.amount, row.currency)}
+                      {formatMoneyWithCode(row.amount, row.currency)}
                     </TableCell>
                     <TableCell className="tabular-nums">
                       {formatDate(row.paidDate)}
