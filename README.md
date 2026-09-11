@@ -1,6 +1,7 @@
 # Digital Amenities · Centro de Control
 
-Dashboard interno de gestión: proyectos y clientes, cobros, mantenimientos,
+Dashboard interno de gestión: proyectos, clientes y proveedores, cobros,
+facturas, mantenimientos,
 gastos, caja, infraestructura, tickets, notas, seguimientos y alertas. Los **proyectos** son
 el núcleo del sistema y todo lo demás cuelga de ellos.
 
@@ -55,6 +56,7 @@ de Supabase, en orden:
 | `15_ventana_de_cobro.sql` | El mantenimiento se cobra en una ventana de días |
 | `16_facturas.sql` | Facturas y su imputación de cobros |
 | `17_facturas_del_cliente.sql` | La factura pasa a ser del cliente, con proyecto opcional |
+| `18_proveedores.sql` | Proveedores, lo que nos facturan y sus pagos |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
 Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11**,
@@ -247,6 +249,17 @@ supabase/         Scripts SQL versionados
   Por eso «que el cobro mueva el estado» no existe como trabajo: editar,
   borrar o reimputar un cobro reacomoda todo solo, y no llega el día en que
   una columna diga una cosa y los cobros otra.
+- **Un pago a proveedor es un MOVIMIENTO DE CAJA, no una tabla aparte.** Si
+  viviera en su propia tabla, el saldo de una cuenta tendría dos orígenes —los
+  movimientos y los pagos— y tarde o temprano se desincronizan. Es lo mismo
+  que el paso 10 evitó con los gastos: «si existiera una tabla de egresos, el
+  saldo de una cuenta tendría dos fuentes». Un pago es un movimiento categoría
+  `Gasto` que además dice a quién se le pagó y qué factura salda.
+- **El proveedor dejó de ser texto libre.** Era `fixed_expenses.vendor`; el
+  paso 18 lo convierte en entidad y migra los valores cargados, para no
+  terminar con dos listas conviviendo. La columna `vendor` se conserva como
+  referencia y ya no se escribe — borrarla rompería guardar cualquier gasto
+  fijo hasta el deploy.
 - **Una factura es del CLIENTE, y el proyecto es opcional.** «Servicio de
   hosting» no es un proyecto: obligar a inventarle uno para poder facturarlo
   ensuciaría la lista de proyectos con cosas que no lo son. Con proyecto, la

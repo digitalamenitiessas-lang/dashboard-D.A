@@ -15,7 +15,9 @@ import type {
   Note,
   Payment,
   Factura,
+  FacturaProveedor,
   Project,
+  Proveedor,
   Seguimiento,
   Task,
   Ticket,
@@ -203,6 +205,7 @@ export function mapFixedExpense(r: Row): FixedExpense {
     concept: str(r.concept),
     kind: r.kind ?? 'Otros',
     vendor: str(r.vendor),
+    proveedorId: r.proveedor_id ?? null,
     projectId: r.project_id ?? null,
     amount: num(r.amount),
     currency: r.currency ?? 'ARS',
@@ -235,6 +238,9 @@ export function mapMovement(r: Row): MoneyMovement {
     expenseKind: r.expense_kind ?? null,
     fixedExpenseId: r.fixed_expense_id ?? null,
     periodStart: r.period_start ?? null,
+    proveedorId: r.proveedor_id ?? null,
+    facturaProveedorId: r.factura_proveedor_id ?? null,
+    facturaAplicado: r.factura_aplicado == null ? null : num(r.factura_aplicado),
   }
 }
 
@@ -328,6 +334,62 @@ export function facturaToRow(f: Partial<Factura>): Row {
     emitidaOn: 'emitida_on',
     venceOn: 'vence_on',
     importe: 'importe',
+    notas: 'notas',
+  })
+}
+
+export function mapProveedor(r: Row): Proveedor {
+  return {
+    id: r.id,
+    nombre: str(r.nombre),
+    cuit: str(r.cuit),
+    contacto: str(r.contacto),
+    telefono: str(r.telefono),
+    email: str(r.email),
+    plazoDias: r.plazo_dias == null ? null : num(r.plazo_dias),
+    notas: str(r.notas),
+    createdAt: r.created_at,
+  }
+}
+
+export function proveedorToRow(p: Partial<Proveedor>): Row {
+  return pick(p, {
+    nombre: 'nombre',
+    cuit: 'cuit',
+    contacto: 'contacto',
+    telefono: 'telefono',
+    email: 'email',
+    plazoDias: 'plazo_dias',
+    notas: 'notas',
+  })
+}
+
+export function mapFacturaProveedor(r: Row): FacturaProveedor {
+  return {
+    id: r.id,
+    proveedorId: r.proveedor_id,
+    numero: str(r.numero),
+    concepto: str(r.concepto),
+    emitidaOn: r.emitida_on,
+    venceOn: r.vence_on ?? null,
+    importe: num(r.importe),
+    moneda: r.moneda ?? 'USD',
+    projectId: r.project_id ?? null,
+    notas: str(r.notas),
+    createdAt: r.created_at,
+  }
+}
+
+export function facturaProveedorToRow(f: Partial<FacturaProveedor>): Row {
+  return pick(f, {
+    proveedorId: 'proveedor_id',
+    numero: 'numero',
+    concepto: 'concepto',
+    emitidaOn: 'emitida_on',
+    venceOn: 'vence_on',
+    importe: 'importe',
+    moneda: 'moneda',
+    projectId: 'project_id',
     notas: 'notas',
   })
 }
@@ -468,7 +530,6 @@ export function fixedExpenseToRow(e: Partial<FixedExpense>): Row {
   return pick(e, {
     concept: 'concept',
     kind: 'kind',
-    vendor: 'vendor',
     projectId: 'project_id',
     amount: 'amount',
     currency: 'currency',
@@ -507,6 +568,9 @@ export function movementToRow(m: Partial<MoneyMovement>): Row {
     expenseKind: 'expense_kind',
     fixedExpenseId: 'fixed_expense_id',
     periodStart: 'period_start',
+    proveedorId: 'proveedor_id',
+    facturaProveedorId: 'factura_proveedor_id',
+    facturaAplicado: 'factura_aplicado',
   })
 }
 

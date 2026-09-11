@@ -297,7 +297,12 @@ export interface FixedExpense {
   id: string
   concept: string
   kind: ExpenseKind
+  /**
+   * OBSOLETO desde el paso 18: el proveedor vive en `proveedorId`. Se
+   * conserva como referencia histórica y ya no se escribe.
+   */
   vendor: string
+  proveedorId: string | null
   projectId: string | null
   /** Lo ESPERADO por período, en `currency`. Nunca lo pagado. */
   amount: number
@@ -348,6 +353,18 @@ export interface MoneyMovement {
    * qué cubre; no se infiere de la fecha en que salió la plata.
    */
   periodStart: string | null
+  /** A quién se le pagó. Null = gasto sin proveedor identificado. */
+  proveedorId: string | null
+  /** Qué factura de proveedor salda. Null = pago sin imputar. */
+  facturaProveedorId: string | null
+  /**
+   * Cuánto salda, en la moneda de la FACTURA. Null = salda su propio importe.
+   *
+   * Espejo de `Payment.appliedAmount`: un movimiento está en la moneda de su
+   * cuenta, así que pagar desde una cuenta en pesos una factura en dólares
+   * necesita decir a cuánto equivale.
+   */
+  facturaAplicado: number | null
 }
 
 export interface ActivityEntry {
@@ -611,6 +628,47 @@ export interface Factura {
    * hace «sin facturar»— sería justo lo que esta app no hace en ningún lado.
    */
   moneda: Currency
+  notas: string
+  createdAt: string
+}
+
+// ---------------------------------------------------------------------
+// Proveedores — el espejo de clientes, del lado de lo que sale
+// ---------------------------------------------------------------------
+
+export interface Proveedor {
+  id: string
+  nombre: string
+  cuit: string
+  contacto: string
+  telefono: string
+  email: string
+  /** Plazo de pago pactado, en días. Null = contra presentación. */
+  plazoDias: number | null
+  notas: string
+  createdAt: string
+}
+
+/**
+ * Lo que nos factura un proveedor.
+ *
+ * Misma forma que `Factura`, dada vuelta. **No tiene estado**: Pendiente /
+ * Parcial / Pagada salen de los movimientos de caja imputados.
+ *
+ * Moneda propia: un proveedor puede facturar en dólares aunque le paguemos
+ * desde una cuenta en pesos.
+ */
+export interface FacturaProveedor {
+  id: string
+  proveedorId: string
+  numero: string
+  concepto: string
+  emitidaOn: string // ISO date
+  venceOn: string | null
+  importe: number
+  moneda: Currency
+  /** A qué proyecto imputarle el gasto. Null = estructura. */
+  projectId: string | null
   notas: string
   createdAt: string
 }

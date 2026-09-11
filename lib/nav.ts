@@ -7,6 +7,7 @@ import {
   Server,
   StickyNote,
   Ticket,
+  Truck,
   Users,
   Wallet,
   Wrench,
@@ -31,6 +32,10 @@ export const navItems: NavItem[] = [
   { label: 'Cobros', href: '/cobros', icon: Wallet },
   { label: 'Caja', href: '/caja', icon: Landmark },
   { label: 'Gastos', href: '/gastos', icon: Receipt },
+  // Espejo de Clientes, del lado de lo que sale. Los pagos no viven acá:
+  // son movimientos de Caja, para que el saldo de cada cuenta siga
+  // saliendo de un solo lugar.
+  { label: 'Proveedores', href: '/proveedores', icon: Truck },
   { label: 'Mantenimientos', href: '/mantenimientos', icon: Wrench },
   { label: 'Infraestructura', href: '/infraestructura', icon: Server },
   { label: 'Tickets', href: '/tickets', icon: Ticket },

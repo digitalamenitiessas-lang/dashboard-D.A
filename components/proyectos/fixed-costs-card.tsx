@@ -103,6 +103,7 @@ export function FixedCostsCard({ project }: { project: Project }) {
       concept: concept.trim(),
       kind,
       vendor: '',
+      proveedorId: null,
       projectId: project.id,
       amount: Number(amount),
       currency,

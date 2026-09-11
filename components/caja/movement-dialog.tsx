@@ -18,6 +18,7 @@ import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
+import { estadoFacturaProveedor, saldoFacturaProveedor } from '@/lib/proveedores'
 import { formatDate, formatMoney, formatMoneyWithCode, todayIso } from '@/lib/format'
 import {
   expenseEntries,
@@ -167,6 +168,9 @@ export function MovementDialog({
     movements,
     fixedExpenses,
     gastosReady,
+    proveedores,
+    facturasProveedor,
+    proveedoresReady,
     addMovement,
     updateMovement,
     deleteMovement,
@@ -232,6 +236,56 @@ export function MovementDialog({
   const sides = shape[category]
   const fromAccount = accounts.find((a) => a.id === fromId)
   const toAccount = accounts.find((a) => a.id === toId)
+
+  const [proveedorId, setProveedorId] = React.useState(
+    movement?.proveedorId ?? '',
+  )
+  const [facturaProvId, setFacturaProvId] = React.useState(
+    movement?.facturaProveedorId ?? '',
+  )
+  const [aplicado, setAplicado] = React.useState(
+    movement?.facturaAplicado === null || movement?.facturaAplicado === undefined
+      ? ''
+      : String(movement.facturaAplicado),
+  )
+
+  /** Las facturas abiertas de ese proveedor, más la que este pago ya salda. */
+  const facturasDelProveedor = React.useMemo(() => {
+    if (!proveedorId) return []
+    return facturasProveedor
+      .filter((f) => f.proveedorId === proveedorId)
+      .filter(
+        (f) =>
+          f.id === movement?.facturaProveedorId ||
+          estadoFacturaProveedor(f, movements) !== 'Pagada',
+      )
+  }, [facturasProveedor, proveedorId, movements, movement])
+
+  const facturaElegida = facturasProveedor.find((f) => f.id === facturaProvId)
+
+  /**
+   * ¿La plata sale de una cuenta en otra moneda que la de la factura?
+   *
+   * Un movimiento está en la moneda de su cuenta de origen. Pagar una
+   * factura en dólares desde una cuenta en pesos necesita decir a cuánto
+   * equivale, igual que del lado de los cobros.
+   */
+  const facturaDistintaMoneda =
+    !!facturaElegida &&
+    !!fromAccount &&
+    facturaElegida.moneda !== fromAccount.currency
+
+  // Cambiar de proveedor invalida una factura elegida del anterior.
+  React.useEffect(() => {
+    if (
+      facturaProvId &&
+      !facturasProveedor.some(
+        (f) => f.id === facturaProvId && f.proveedorId === proveedorId,
+      )
+    ) {
+      setFacturaProvId('')
+    }
+  }, [facturaProvId, proveedorId, facturasProveedor])
 
   const isGasto = category === 'Gasto'
   const isAjuste = category === 'Ajuste'
@@ -419,6 +473,25 @@ export function MovementDialog({
       amountIn: sides.to && toId ? income : 0,
       projectId: projectId || null,
       notes: notes.trim(),
+      // Proveedor y factura: sólo en un Gasto, que es lo que la base exige
+      // con un CHECK. Sin `18_proveedores.sql` las columnas no existen y
+      // mandarlas haría fallar el guardado entero — mismo cuidado que con
+      // las del paso 10.
+      proveedorId: proveedoresReady
+        ? isGasto
+          ? proveedorId || null
+          : null
+        : undefined,
+      facturaProveedorId: proveedoresReady
+        ? isGasto
+          ? facturaProvId || null
+          : null
+        : undefined,
+      facturaAplicado: proveedoresReady
+        ? isGasto && facturaProvId && facturaDistintaMoneda && Number(aplicado) > 0
+          ? Number(aplicado)
+          : null
+        : undefined,
       expenseKind: gastosReady ? (isGasto ? kind || null : null) : undefined,
       fixedExpenseId: gastosReady ? (isGasto ? planId || null : null) : undefined,
       periodStart: gastosReady
@@ -529,6 +602,89 @@ export function MovementDialog({
                       ]}
                     />
                   </Field>
+
+                  {/* A quién se le paga y qué factura salda. Es lo que hace
+                      que la factura del proveedor se cancele sola: el estado
+                      sale de los pagos imputados, no de una columna. */}
+                  {proveedoresReady ? (
+                    <>
+                      <Field>
+                        <FieldLabel htmlFor="mov-proveedor">
+                          Proveedor
+                        </FieldLabel>
+                        <SimpleSelect
+                          id="mov-proveedor"
+                          value={proveedorId}
+                          onValueChange={setProveedorId}
+                          placeholder="Sin proveedor"
+                          options={[
+                            { value: '', label: 'Sin proveedor' },
+                            ...proveedores.map((pr) => ({
+                              value: pr.id,
+                              label: pr.nombre,
+                            })),
+                          ]}
+                        />
+                      </Field>
+
+                      {proveedorId ? (
+                        <Field>
+                          <FieldLabel htmlFor="mov-fact-prov">
+                            Factura que salda
+                          </FieldLabel>
+                          <SimpleSelect
+                            id="mov-fact-prov"
+                            value={facturaProvId}
+                            onValueChange={setFacturaProvId}
+                            placeholder={
+                              facturasDelProveedor.length === 0
+                                ? 'No tiene facturas abiertas'
+                                : 'Sin imputar'
+                            }
+                            options={[
+                              { value: '', label: 'Sin imputar' },
+                              ...facturasDelProveedor.map((f) => ({
+                                value: f.id,
+                                label: `${f.concepto} · falta ${formatMoney(
+                                  saldoFacturaProveedor(f, movements),
+                                  f.moneda,
+                                )}`,
+                              })),
+                            ]}
+                          />
+                        </Field>
+                      ) : null}
+
+                      {/* La plata sale de una cuenta en otra moneda que la de
+                          la factura: hay que decir cuánto salda, igual que del
+                          lado de los cobros. Sin esto el pago no cancelaría
+                          nada. */}
+                      {facturaDistintaMoneda && facturaElegida ? (
+                        <Field>
+                          <FieldLabel htmlFor="mov-aplicado">
+                            Equivale a ({facturaElegida.moneda})
+                          </FieldLabel>
+                          <MoneyInput
+                            id="mov-aplicado"
+                            value={aplicado}
+                            onValueChange={setAplicado}
+                            placeholder="0"
+                          />
+                          <p
+                            className={
+                              Number(aplicado) > 0
+                                ? 'text-xs text-muted-foreground'
+                                : 'text-xs text-amber-300'
+                            }
+                          >
+                            {Number(aplicado) > 0
+                              ? `La factura está en ${facturaElegida.moneda} y la plata sale de una cuenta en ${fromAccount?.currency}.`
+                              : 'Sin esto el pago no cancela nada de la factura.'}
+                          </p>
+                        </Field>
+                      ) : null}
+                    </>
+                  ) : null}
 
                   {plan ? (
                     <Field>

@@ -75,6 +75,7 @@ export function FixedExpenseDialog({
     projects,
     accounts,
     movements,
+    proveedores,
     gastosReady,
     addFixedExpense,
     updateFixedExpense,
@@ -83,7 +84,12 @@ export function FixedExpenseDialog({
   const editing = Boolean(expense)
 
   const [concept, setConcept] = React.useState(expense?.concept ?? '')
-  const [vendor, setVendor] = React.useState(expense?.vendor ?? '')
+  // El proveedor dejó de ser texto libre: ahora es una entidad. El campo
+  // viejo (`vendor`) se sigue leyendo para las filas que no se migraron,
+  // pero no se escribe más.
+  const [proveedorId, setProveedorId] = React.useState(
+    expense?.proveedorId ?? '',
+  )
   const [kind, setKind] = React.useState<ExpenseKind>(expense?.kind ?? 'Otros')
   const [amount, setAmount] = React.useState(
     expense ? String(expense.amount) : '',
@@ -140,7 +146,8 @@ export function FixedExpenseDialog({
       id: expense?.id ?? '',
       concept: concept.trim(),
       kind,
-      vendor: vendor.trim(),
+      vendor: expense?.vendor ?? '',
+      proveedorId: proveedorId || null,
       projectId: projectId || null,
       amount: validAmount ? amountNumber : 0,
       currency,
@@ -179,7 +186,7 @@ export function FixedExpenseDialog({
     expense,
     concept,
     kind,
-    vendor,
+    proveedorId,
     projectId,
     amountNumber,
     validAmount,
@@ -201,7 +208,8 @@ export function FixedExpenseDialog({
     const payload = {
       concept: concept.trim(),
       kind,
-      vendor: vendor.trim(),
+      vendor: expense?.vendor ?? '',
+      proveedorId: proveedorId || null,
       projectId: projectId || null,
       amount: amountNumber,
       currency,
@@ -269,12 +277,31 @@ export function FixedExpenseDialog({
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="fx-vendor">Proveedor</FieldLabel>
-                  <Input
+                  <SimpleSelect
                     id="fx-vendor"
-                    value={vendor}
-                    onChange={(e) => setVendor(e.target.value)}
-                    placeholder="Ej: Vercel"
+                    value={proveedorId}
+                    onValueChange={setProveedorId}
+                    placeholder={
+                      proveedores.length === 0
+                        ? 'Todavía no hay proveedores'
+                        : 'Sin proveedor'
+                    }
+                    options={[
+                      { value: '', label: 'Sin proveedor' },
+                      ...proveedores.map((p) => ({
+                        value: p.id,
+                        label: p.nombre,
+                      })),
+                    ]}
                   />
+                  {/* La fila vieja puede tener el nombre como texto y todavía
+                      sin enlazar: se muestra para que se vea qué había. */}
+                  {!proveedorId && expense?.vendor ? (
+                    <p className="text-xs text-muted-foreground">
+                      Antes decía «{expense.vendor}». Elegilo de la lista o
+                      creá el proveedor desde su sección.
+                    </p>
+                  ) : null}
                 </Field>
                 <Field>
                   <FieldLabel htmlFor="fx-kind">Rubro</FieldLabel>
