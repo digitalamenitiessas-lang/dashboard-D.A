@@ -305,8 +305,11 @@ export function normalizarProspecto(valor: string): string {
 export function mapFactura(r: Row): Factura {
   return {
     id: r.id,
-    projectId: r.project_id,
+    clienteId: r.cliente_id,
+    projectId: r.project_id ?? null,
     numero: str(r.numero),
+    concepto: str(r.concepto),
+    moneda: r.moneda ?? 'USD',
     emitidaOn: r.emitida_on,
     venceOn: r.vence_on ?? null,
     importe: num(r.importe),
@@ -317,8 +320,11 @@ export function mapFactura(r: Row): Factura {
 
 export function facturaToRow(f: Partial<Factura>): Row {
   return pick(f, {
+    clienteId: 'cliente_id',
     projectId: 'project_id',
     numero: 'numero',
+    concepto: 'concepto',
+    moneda: 'moneda',
     emitidaOn: 'emitida_on',
     venceOn: 'vence_on',
     importe: 'importe',

@@ -42,7 +42,7 @@ import { EditProjectDialog } from '@/components/proyectos/edit-project-dialog'
 import { EditDevelopmentDialog } from '@/components/proyectos/edit-development-dialog'
 import { EditInfrastructureDialog } from '@/components/proyectos/edit-infrastructure-dialog'
 import { FixedCostsCard } from '@/components/proyectos/fixed-costs-card'
-import { FacturasCard } from '@/components/facturas/facturas-card'
+import { FacturasProyecto } from '@/components/facturas/facturas-proyecto'
 import { EditMaintenanceDialog } from '@/components/mantenimientos/maintenance-dialogs'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
 import { WhatsappButton } from '@/components/shared/whatsapp-button'
@@ -474,7 +474,7 @@ export default function ProjectDetailPage() {
               orden es el orden en que pasa. */}
           {project.type === 'terceros' ? (
             <div className="mb-4">
-              <FacturasCard project={project} />
+              <FacturasProyecto project={project} />
             </div>
           ) : null}
           <div className="glass overflow-hidden rounded-2xl">

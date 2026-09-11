@@ -101,7 +101,7 @@ export function AddPaymentDialog({
     if (!project) return []
     return facturas
       .filter((f) => f.projectId === project.id)
-      .filter((f) => estadoFactura(f, payments, project) !== 'Cancelada')
+      .filter((f) => estadoFactura(f, payments) !== 'Cancelada')
   }, [facturas, payments, project])
 
   // Al cambiar de proyecto, una factura elegida del anterior deja de valer.
@@ -267,9 +267,9 @@ export function AddPaymentDialog({
                   { value: '', label: 'Sin imputar' },
                   ...facturasAbiertas.map((f) => ({
                     value: f.id,
-                    label: `${f.numero} · falta ${formatMoney(
-                      saldoFactura(f, payments, project),
-                      project.currency,
+                    label: `${f.numero} · ${f.concepto || 'sin concepto'} · falta ${formatMoney(
+                      saldoFactura(f, payments),
+                      f.moneda,
                     )}`,
                   })),
                 ]}

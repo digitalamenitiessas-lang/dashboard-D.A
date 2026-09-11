@@ -11,12 +11,13 @@ import { useStore } from '@/lib/store'
 import {
   estadoFactura,
   imputadoA,
-  resumenFacturacion,
+  resumenCliente,
   saldoFactura,
 } from '@/lib/facturas'
 import { formatDate, formatMoney, formatMoneyWithCode } from '@/lib/format'
+import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import type { Factura, FacturaEstado, Project } from '@/lib/types'
+import type { Client, Factura, FacturaEstado } from '@/lib/types'
 
 const estadoStyles: Record<FacturaEstado, string> = {
   Pendiente: 'bg-amber-400/12 text-amber-300 border-amber-400/25',
@@ -25,22 +26,27 @@ const estadoStyles: Record<FacturaEstado, string> = {
 }
 
 /**
- * Las facturas de un proyecto, con su estado calculado.
+ * Las facturas de un cliente, con su estado calculado.
  *
  * El estado no sale de ninguna columna: se compara el importe de cada
  * factura con lo que se le imputó de cobros. Registrar un cobro imputado la
- * mueve sola, y editarlo o borrarlo también — no hay ningún estado guardado
- * que pueda quedar diciendo otra cosa.
+ * mueve sola, y editarlo o borrarlo también — no hay un estado guardado que
+ * pueda quedar diciendo otra cosa.
+ *
+ * Una factura puede no tener proyecto: «Servicio de hosting» no es un
+ * desarrollo con presupuesto. Las que sí lo tienen muestran de cuál son.
  */
-export function FacturasCard({ project }: { project: Project }) {
-  const { payments, facturas, facturasReady } = useStore()
+export function FacturasCliente({ client }: { client: Client }) {
+  const { projects, payments, facturas, facturasReady } = useStore()
   const [editando, setEditando] = React.useState<Factura | null>(null)
 
   const resumen = React.useMemo(
-    () => resumenFacturacion(project, facturas, payments),
-    [project, facturas, payments],
+    () => resumenCliente(client, facturas, payments, projects),
+    [client, facturas, payments, projects],
   )
-  const pagos = payments.filter((p) => p.projectId === project.id)
+
+  const nombreProyecto = (id: string | null) =>
+    id ? (projects.find((p) => p.id === id)?.name ?? '—') : null
 
   if (!facturasReady) {
     return (
@@ -50,8 +56,11 @@ export function FacturasCard({ project }: { project: Project }) {
           <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs">
             supabase/16_facturas.sql
           </code>{' '}
-          desde el SQL Editor de Supabase. El resto de la app funciona normal
-          mientras tanto.
+          y{' '}
+          <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs">
+            supabase/17_facturas_del_cliente.sql
+          </code>
+          . El resto de la app funciona normal mientras tanto.
         </p>
       </DetailCard>
     )
@@ -62,37 +71,26 @@ export function FacturasCard({ project }: { project: Project }) {
       <DetailCard
         title="Facturas"
         icon={Receipt}
-        action={
-          <FacturaDialog proyectoFijo={project} triggerLabel="Nueva factura" />
-        }
+        action={<FacturaDialog cliente={client} triggerLabel="Nueva factura" />}
       >
-        {/* Los tres números, con nombres que no se pisan. «Pendiente de
-            cobro» es la deuda de verdad —lo facturado que no se cobró— y
-            «sin facturar» es trabajo acordado que todavía no se le pasó al
-            cliente. Sin el segundo, pasar la deuda a medirse contra las
-            facturas haría desaparecer de la vista lo que falta facturar. */}
-        <div className="mb-3 grid grid-cols-3 gap-2 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+        <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
           <div>
             <p className="text-[11px] text-muted-foreground">Facturado</p>
             <p className="mt-0.5 text-sm font-semibold tabular-nums">
-              {formatMoneyWithCode(resumen.facturado, project.currency)}
+              {formatMoneyByCurrency(resumen.facturado)}
             </p>
           </div>
           <div>
-            <p className="text-[11px] text-muted-foreground">Pendiente de cobro</p>
+            <p className="text-[11px] text-muted-foreground">
+              Pendiente de cobro
+            </p>
             <p
               className={cn(
                 'mt-0.5 text-sm font-semibold tabular-nums',
-                resumen.pendienteDeCobro > 0 && 'text-amber-300',
+                !isEmptyMoney(resumen.pendienteDeCobro) && 'text-amber-300',
               )}
             >
-              {formatMoneyWithCode(resumen.pendienteDeCobro, project.currency)}
-            </p>
-          </div>
-          <div>
-            <p className="text-[11px] text-muted-foreground">Sin facturar</p>
-            <p className="mt-0.5 text-sm font-semibold tabular-nums text-muted-foreground">
-              {formatMoneyWithCode(resumen.sinFacturar, project.currency)}
+              {formatMoneyByCurrency(resumen.pendienteDeCobro)}
             </p>
           </div>
         </div>
@@ -104,15 +102,15 @@ export function FacturasCard({ project }: { project: Project }) {
             <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
             <p className="text-xs leading-relaxed text-muted-foreground text-pretty">
               <span className="tabular-nums">{resumen.sinImputar.length}</span>{' '}
-              cobro(s) sin imputar a ninguna factura:{' '}
+              cobro(s) sin imputar:{' '}
               {resumen.sinImputar
                 .map(
                   (p) =>
                     `${p.concept} (${formatMoneyWithCode(p.amount, p.currency)})`,
                 )
                 .join(', ')}
-              . Entró la plata pero no salda nada — se asignan editando el
-              cobro desde{' '}
+              . La plata entró pero no salda ninguna factura — se asignan
+              editando el cobro desde{' '}
               <Link href="/cobros" className="text-neon-blue hover:underline">
                 Cobros
               </Link>
@@ -123,23 +121,28 @@ export function FacturasCard({ project }: { project: Project }) {
 
         {resumen.facturas.length === 0 ? (
           <p className="py-2 text-sm text-muted-foreground text-pretty">
-            Sin facturas cargadas. Al registrarlas, el estado de cada una sale
-            solo de los cobros que se le imputen.
+            Sin facturas. Cargale una por el servicio que le damos —hosting,
+            soporte, una etapa del desarrollo— y queda abierta hasta que se
+            cobre.
           </p>
         ) : (
           <ul className="flex flex-col divide-y divide-white/5">
             {resumen.facturas.map((f) => {
-              const estado = estadoFactura(f, pagos, project)
-              const imputado = imputadoA(f, pagos, project)
-              const saldo = saldoFactura(f, pagos, project)
+              const estado = estadoFactura(f, payments)
+              const imputado = imputadoA(f, payments)
+              const saldo = saldoFactura(f, payments)
+              const proyecto = nombreProyecto(f.projectId)
               return (
                 <li key={f.id} className="flex flex-col gap-1.5 py-3">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{f.numero}</p>
+                      <p className="truncate text-sm font-medium">
+                        {f.concepto || f.numero}
+                      </p>
                       <p className="truncate text-xs text-muted-foreground tabular-nums">
-                        {formatDate(f.emitidaOn)}
+                        {f.numero} · {formatDate(f.emitidaOn)}
                         {f.venceOn ? ` · vence ${formatDate(f.venceOn)}` : ''}
+                        {proyecto ? ` · ${proyecto}` : ''}
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
@@ -164,10 +167,10 @@ export function FacturasCard({ project }: { project: Project }) {
                     <span className="text-muted-foreground">
                       {estado === 'Cancelada'
                         ? 'Cobrada'
-                        : `Cobrado ${formatMoney(imputado, project.currency)} · falta ${formatMoney(saldo, project.currency)}`}
+                        : `Cobrado ${formatMoney(imputado, f.moneda)} · falta ${formatMoney(saldo, f.moneda)}`}
                     </span>
                     <span className="font-semibold">
-                      {formatMoney(f.importe, project.currency)}
+                      {formatMoneyWithCode(f.importe, f.moneda)}
                     </span>
                   </div>
                   {f.notas ? (
@@ -186,7 +189,7 @@ export function FacturasCard({ project }: { project: Project }) {
         <FacturaDialog
           key={editando.id}
           factura={editando}
-          proyectoFijo={project}
+          cliente={client}
           open={!!editando}
           onOpenChange={(o) => !o && setEditando(null)}
         />

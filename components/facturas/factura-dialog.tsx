@@ -18,42 +18,52 @@ import { Field, FieldGroup, FieldLabel } from '@/components/ui/field'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { MoneyInput } from '@/components/shared/money-input'
-import { SimpleSelect } from '@/components/shared/simple-select'
+import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { useStore } from '@/lib/store'
 import { estadoFactura, imputadoA } from '@/lib/facturas'
 import { formatMoney, todayIso } from '@/lib/format'
-import type { Factura, Project } from '@/lib/types'
+import type { Client, Currency, Factura } from '@/lib/types'
 
 /**
- * Alta y edición de una factura, en un solo componente.
+ * Alta y edición de una factura de cliente.
  *
- * La MONEDA no se elige: es la del proyecto, y se muestra al lado del
- * importe. Una moneda propia abriría una tercera conversión —cotizado,
- * facturado y cobrado en tres monedas distintas— y este sistema no tiene
- * cotización cargada para resolverla. Con la del proyecto, el equivalente de
- * un cobro en otra moneda salda la factura sin ninguna cuenta extra.
+ * No es un comprobante de AFIP: es el registro de qué se le facturó a quién,
+ * para saber qué está cobrado y qué no. Por eso alcanza con número,
+ * concepto, importe y fecha.
  *
- * El ESTADO tampoco se elige, y no está por olvido: sale de los cobros
- * imputados. Se mueve imputando un cobro, que es lo que de verdad pasa.
+ * EL PROYECTO ES OPCIONAL, y esa es la parte importante. «Servicio de
+ * hosting» no es un proyecto; obligar a inventarle uno para poder facturarlo
+ * ensuciaría la lista de proyectos con cosas que no lo son. Con proyecto, la
+ * factura suma a los números de ese proyecto; sin él, es un servicio suelto.
+ *
+ * EL ESTADO NO SE ELIGE: sale de los cobros imputados. Se mueve registrando
+ * un cobro, que es lo que de verdad pasa.
  */
 export function FacturaDialog({
   factura,
-  proyectoFijo,
+  cliente,
   open,
   onOpenChange,
   triggerLabel = 'Nueva factura',
   triggerVariant = 'outline',
 }: {
   factura?: Factura
-  /** Clava el proyecto y esconde el selector. */
-  proyectoFijo?: Project
+  /** Clava el cliente y esconde el selector. */
+  cliente?: Client
   open?: boolean
   onOpenChange?: (open: boolean) => void
   triggerLabel?: string
   triggerVariant?: 'default' | 'outline'
 }) {
-  const { projects, payments, facturasReady, addFactura, updateFactura, deleteFactura } =
-    useStore()
+  const {
+    clients,
+    projects,
+    payments,
+    facturasReady,
+    addFactura,
+    updateFactura,
+    deleteFactura,
+  } = useStore()
 
   const controlado = open !== undefined
   const [abierto, setAbierto] = React.useState(false)
@@ -65,10 +75,12 @@ export function FacturaDialog({
 
   const editando = !!factura
 
-  const [projectId, setProjectId] = React.useState(
-    factura?.projectId ?? proyectoFijo?.id ?? '',
+  const [clienteId, setClienteId] = React.useState(
+    factura?.clienteId ?? cliente?.id ?? '',
   )
+  const [projectId, setProjectId] = React.useState(factura?.projectId ?? '')
   const [numero, setNumero] = React.useState(factura?.numero ?? '')
+  const [concepto, setConcepto] = React.useState(factura?.concepto ?? '')
   const [emitidaOn, setEmitidaOn] = React.useState(
     factura?.emitidaOn ?? todayIso(),
   )
@@ -76,37 +88,61 @@ export function FacturaDialog({
   const [importe, setImporte] = React.useState(
     factura ? String(factura.importe) : '',
   )
+  const [moneda, setMoneda] = React.useState<Currency>(factura?.moneda ?? 'USD')
   const [notas, setNotas] = React.useState(factura?.notas ?? '')
   const [confirmandoBorrado, setConfirmandoBorrado] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
 
-  // Sólo los de terceros: un proyecto propio no se le factura a nadie, y la
-  // regla ya está en el modelo (un propio no puede tener cliente).
-  const facturables = projects.filter((p) => p.type === 'terceros')
-  const project = proyectoFijo ?? projects.find((p) => p.id === projectId)
+  const elCliente = cliente ?? clients.find((c) => c.id === clienteId)
+
+  /** Sólo los proyectos de ESE cliente: una factura no cruza clientes. */
+  const proyectosDelCliente = React.useMemo(
+    () => projects.filter((p) => p.clientId === (elCliente?.id ?? '')),
+    [projects, elCliente],
+  )
+  const proyecto = proyectosDelCliente.find((p) => p.id === projectId)
+
+  /**
+   * Con proyecto, la moneda la manda el proyecto y el campo se bloquea: la
+   * base lo exige con un trigger, porque «facturado» y «cotizado» del mismo
+   * proyecto en monedas distintas harían que «sin facturar» reste peras con
+   * manzanas.
+   */
+  React.useEffect(() => {
+    if (proyecto) setMoneda(proyecto.currency)
+  }, [proyecto])
+
+  // Cambiar de cliente invalida un proyecto elegido del anterior.
+  React.useEffect(() => {
+    if (projectId && !proyectosDelCliente.some((p) => p.id === projectId)) {
+      setProjectId('')
+    }
+  }, [projectId, proyectosDelCliente])
 
   const fechaAlReves = venceOn !== '' && venceOn < emitidaOn
   const valid =
-    !!project &&
+    !!elCliente &&
     numero.trim() !== '' &&
+    concepto.trim() !== '' &&
     Number(importe) > 0 &&
     emitidaOn !== '' &&
     !fechaAlReves
 
-  /** Lo ya cobrado contra esta factura, para no dejar bajar el importe abajo. */
-  const yaImputado =
-    factura && project ? imputadoA(factura, payments, project) : 0
+  const yaImputado = factura ? imputadoA(factura, payments) : 0
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!valid || !project || saving) return
+    if (!valid || !elCliente || saving) return
     setSaving(true)
     const datos = {
-      projectId: project.id,
+      clienteId: elCliente.id,
+      projectId: projectId || null,
       numero: numero.trim(),
+      concepto: concepto.trim(),
       emitidaOn,
       venceOn: venceOn || null,
       importe: Number(importe),
+      moneda,
       notas: notas.trim(),
     }
     const ok = factura
@@ -115,7 +151,7 @@ export function FacturaDialog({
     setSaving(false)
     if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success(editando ? 'Factura actualizada' : 'Factura registrada', {
-      description: `${datos.numero} · ${formatMoney(datos.importe, project.currency)}`,
+      description: `${datos.numero} · ${formatMoney(datos.importe, moneda)}`,
     })
     setVisible(false)
   }
@@ -131,7 +167,7 @@ export function FacturaDialog({
   }
 
   const cuerpo = (
-    <DialogContent className="sm:max-w-md">
+    <DialogContent className="sm:max-w-lg">
       <DialogHeader>
         <DialogTitle>
           {confirmandoBorrado
@@ -143,9 +179,7 @@ export function FacturaDialog({
         <DialogDescription>
           {confirmandoBorrado
             ? 'Se borra de forma definitiva.'
-            : project
-              ? `${project.name} · importe en ${project.currency}`
-              : 'Elegí el proyecto que se factura.'}
+            : 'Lo que se le factura al cliente. Se cancela sola con los cobros que se le imputen.'}
         </DialogDescription>
       </DialogHeader>
 
@@ -153,7 +187,8 @@ export function FacturaDialog({
         <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm leading-relaxed text-red-200 text-pretty">
           <p>
             <strong>{factura.numero}</strong> ·{' '}
-            {project ? formatMoney(factura.importe, project.currency) : ''}
+            {formatMoney(factura.importe, factura.moneda)}
+            {factura.concepto ? ` · ${factura.concepto}` : ''}
           </p>
           <p className="mt-2 text-xs text-red-200/80">
             {yaImputado > 0
@@ -164,21 +199,52 @@ export function FacturaDialog({
       ) : (
         <form id="fac-form" onSubmit={submit}>
           <FieldGroup>
-            {proyectoFijo ? null : (
+            {cliente ? null : (
               <Field>
-                <FieldLabel htmlFor="fac-project">Proyecto</FieldLabel>
+                <FieldLabel htmlFor="fac-cliente">Cliente</FieldLabel>
                 <SimpleSelect
-                  id="fac-project"
-                  value={projectId}
-                  onValueChange={setProjectId}
-                  placeholder="Elegí el proyecto"
-                  options={facturables.map((p) => ({
-                    value: p.id,
-                    label: `${p.name} · ${p.currency}`,
-                  }))}
+                  id="fac-cliente"
+                  value={clienteId}
+                  onValueChange={setClienteId}
+                  placeholder="Elegí el cliente"
+                  options={clients.map((c) => ({ value: c.id, label: c.name }))}
                 />
               </Field>
             )}
+
+            <Field>
+              <FieldLabel htmlFor="fac-concepto">Concepto</FieldLabel>
+              <Input
+                id="fac-concepto"
+                value={concepto}
+                onChange={(e) => setConcepto(e.target.value)}
+                placeholder="Ej: Servicio de hosting · septiembre"
+              />
+            </Field>
+
+            <Field>
+              <FieldLabel htmlFor="fac-project">
+                Proyecto (opcional)
+              </FieldLabel>
+              <SimpleSelect
+                id="fac-project"
+                value={projectId}
+                onValueChange={setProjectId}
+                placeholder="Sin proyecto — servicio suelto"
+                options={[
+                  { value: '', label: 'Sin proyecto — servicio suelto' },
+                  ...proyectosDelCliente.map((p) => ({
+                    value: p.id,
+                    label: `${p.name} · ${p.currency}`,
+                  })),
+                ]}
+              />
+              <p className="text-xs text-muted-foreground text-pretty">
+                {proyecto
+                  ? `Suma a lo facturado de ${proyecto.name}, y va en ${proyecto.currency} como el proyecto.`
+                  : 'Un servicio que no es parte de ningún desarrollo: hosting, soporte, dominio.'}
+              </p>
+            </Field>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
@@ -187,12 +253,29 @@ export function FacturaDialog({
                   id="fac-numero"
                   value={numero}
                   onChange={(e) => setNumero(e.target.value)}
-                  placeholder="Ej: A-0001-00001234"
+                  placeholder="Ej: 0001-00001234"
                 />
               </Field>
               <Field>
+                <FieldLabel htmlFor="fac-moneda">Moneda</FieldLabel>
+                <SimpleSelect
+                  id="fac-moneda"
+                  value={moneda}
+                  onValueChange={(v) => setMoneda(v as Currency)}
+                  options={toOptions(['USD', 'ARS', 'EUR'] as const)}
+                />
+                {proyecto ? (
+                  <p className="text-xs text-muted-foreground">
+                    La manda el proyecto.
+                  </p>
+                ) : null}
+              </Field>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field>
                 <FieldLabel htmlFor="fac-importe">
-                  Importe {project ? `(${project.currency})` : ''}
+                  Importe ({moneda})
                 </FieldLabel>
                 <MoneyInput
                   id="fac-importe"
@@ -200,7 +283,7 @@ export function FacturaDialog({
                   onValueChange={setImporte}
                   placeholder="0"
                 />
-                {editando && yaImputado > 0 && project ? (
+                {editando && yaImputado > 0 ? (
                   <p
                     className={
                       Number(importe) < yaImputado
@@ -208,17 +291,13 @@ export function FacturaDialog({
                         : 'text-xs text-muted-foreground'
                     }
                   >
-                    Ya tiene {formatMoney(yaImputado, project.currency)}{' '}
-                    imputados
+                    Ya tiene {formatMoney(yaImputado, moneda)} cobrados
                     {Number(importe) < yaImputado
                       ? ': con este importe queda cobrada de más.'
                       : '.'}
                   </p>
                 ) : null}
               </Field>
-            </div>
-
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel htmlFor="fac-emitida">Fecha</FieldLabel>
                 <Input
@@ -228,23 +307,24 @@ export function FacturaDialog({
                   onChange={(e) => setEmitidaOn(e.target.value)}
                 />
               </Field>
-              <Field>
-                <FieldLabel htmlFor="fac-vence">Vence (opcional)</FieldLabel>
-                <Input
-                  id="fac-vence"
-                  type="date"
-                  value={venceOn}
-                  min={emitidaOn}
-                  onChange={(e) => setVenceOn(e.target.value)}
-                  aria-invalid={fechaAlReves || undefined}
-                />
-                {fechaAlReves ? (
-                  <p role="alert" className="text-xs text-amber-300">
-                    No puede vencer antes de emitirse.
-                  </p>
-                ) : null}
-              </Field>
             </div>
+
+            <Field>
+              <FieldLabel htmlFor="fac-vence">Vence (opcional)</FieldLabel>
+              <Input
+                id="fac-vence"
+                type="date"
+                value={venceOn}
+                min={emitidaOn}
+                onChange={(e) => setVenceOn(e.target.value)}
+                aria-invalid={fechaAlReves || undefined}
+              />
+              {fechaAlReves ? (
+                <p role="alert" className="text-xs text-amber-300">
+                  No puede vencer antes de emitirse.
+                </p>
+              ) : null}
+            </Field>
 
             <Field>
               <FieldLabel htmlFor="fac-notas">Notas</FieldLabel>
@@ -252,18 +332,15 @@ export function FacturaDialog({
                 id="fac-notas"
                 value={notas}
                 onChange={(e) => setNotas(e.target.value)}
-                placeholder="Qué cubre, condiciones, lo que haga falta..."
                 rows={2}
               />
             </Field>
 
-            {/* El estado no es un campo, y conviene decir por qué para que
-                nadie lo busque. */}
-            {editando && factura && project ? (
+            {editando && factura ? (
               <p className="text-xs text-muted-foreground text-pretty">
                 Estado:{' '}
                 <span className="font-medium text-foreground">
-                  {estadoFactura(factura, payments, project)}
+                  {estadoFactura(factura, payments)}
                 </span>
                 . No se elige: sale de los cobros que se le imputan, así que se
                 mueve solo al registrar uno.

@@ -25,7 +25,7 @@ import { StatCard } from '@/components/shared/stat-card'
 import { StatusChip } from '@/components/shared/status-chip'
 import { WhatsappButton } from '@/components/shared/whatsapp-button'
 import { DetailCard, InfoRow } from '@/components/proyectos/detail-parts'
-import { FacturasCard } from '@/components/facturas/facturas-card'
+import { FacturasCliente } from '@/components/facturas/facturas-card'
 import { EditClientDialog } from '@/components/clientes/edit-client-dialog'
 import { useStore } from '@/lib/store'
 import { enriquecerClientes } from '@/lib/clientes'
@@ -250,13 +250,7 @@ export default function ClienteDetallePage() {
         )}
       </DetailCard>
 
-      {/* Una tarjeta de facturas por proyecto: el importe de una factura
-          está en la moneda de SU proyecto, y un cliente puede tener proyectos
-          en monedas distintas. Juntarlas en una sola lista obligaría a sumar
-          monedas o a repetir el código en cada renglón. */}
-      {ps.map((p) => (
-        <FacturasCard key={p.id} project={p} />
-      ))}
+      <FacturasCliente client={client} />
 
       {editOpen ? (
         <EditClientDialog

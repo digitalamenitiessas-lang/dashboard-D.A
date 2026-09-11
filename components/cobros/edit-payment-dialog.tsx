@@ -92,7 +92,7 @@ export function EditPaymentDialog({
       .filter(
         (f) =>
           f.id === payment.facturaId ||
-          estadoFactura(f, payments, project) !== 'Cancelada',
+          estadoFactura(f, payments) !== 'Cancelada',
       )
   }, [facturas, payments, project, payment.facturaId])
 
@@ -194,9 +194,9 @@ export function EditPaymentDialog({
                       { value: '', label: 'Sin imputar' },
                       ...facturasElegibles.map((f) => ({
                         value: f.id,
-                        label: `${f.numero} · falta ${formatMoney(
-                          saldoFactura(f, payments, project),
-                          project.currency,
+                        label: `${f.numero} · ${f.concepto || 'sin concepto'} · falta ${formatMoney(
+                          saldoFactura(f, payments),
+                          f.moneda,
                         )}`,
                       })),
                     ]}

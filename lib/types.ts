@@ -68,7 +68,11 @@ export interface Client {
 /** Money that already came in. There is no scheduled/overdue notion. */
 export interface Payment {
   id: string
-  projectId: string
+  /**
+   * Opcional desde el paso 17: un cobro puede saldar una factura de servicio
+   * que no corresponde a ningún proyecto (hosting, soporte).
+   */
+  projectId: string | null
   concept: string
   /** Lo que entró de verdad, en `currency`. Es lo que suma al saldo de su cuenta. */
   amount: number
@@ -585,13 +589,28 @@ export type FacturaEstado = (typeof FACTURA_ESTADOS)[number]
  */
 export interface Factura {
   id: string
-  projectId: string
+  /** A quién se le factura. Obligatorio: una factura siempre tiene destinatario. */
+  clienteId: string
+  /**
+   * Opcional. Con proyecto, la factura suma a los números de ese proyecto
+   * —facturado, sin facturar—. Sin proyecto es un servicio suelto: hosting,
+   * soporte, lo que no es un desarrollo con presupuesto.
+   */
+  projectId: string | null
   numero: string
+  /** Qué se factura: «Servicio de hosting». Es lo que se lee en la lista. */
+  concepto: string
   emitidaOn: string // ISO date
   /** Null = sin plazo pactado. */
   venceOn: string | null
-  /** En la moneda del PROYECTO. */
   importe: number
+  /**
+   * Propia, porque sin proyecto no hay de dónde heredarla. Con proyecto, la
+   * base exige que sea la del proyecto: si no, «facturado» y «cotizado» del
+   * mismo proyecto quedarían en monedas distintas y restarlos —que es lo que
+   * hace «sin facturar»— sería justo lo que esta app no hace en ningún lado.
+   */
+  moneda: Currency
   notas: string
   createdAt: string
 }

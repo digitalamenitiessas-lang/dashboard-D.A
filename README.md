@@ -53,7 +53,8 @@ de Supabase, en orden:
 | `13_mantenimiento_un_solo_estado.sql` | `active` pasa a derivarse de `status` |
 | `14_cobros_en_otra_moneda.sql` | Cobrar en una moneda y saldar en otra |
 | `15_ventana_de_cobro.sql` | El mantenimiento se cobra en una ventana de días |
-| `16_facturas.sql` | Facturas de cliente y su imputación de cobros |
+| `16_facturas.sql` | Facturas y su imputación de cobros |
+| `17_facturas_del_cliente.sql` | La factura pasa a ser del cliente, con proyecto opcional |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
 Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11**,
@@ -246,9 +247,15 @@ supabase/         Scripts SQL versionados
   Por eso «que el cobro mueva el estado» no existe como trabajo: editar,
   borrar o reimputar un cobro reacomoda todo solo, y no llega el día en que
   una columna diga una cosa y los cobros otra.
-- **Una factura no tiene moneda propia**: está en la del proyecto. Una moneda
-  propia abriría una tercera conversión —cotizado, facturado y cobrado en tres
-  monedas— y no hay cotización cargada para resolverla.
+- **Una factura es del CLIENTE, y el proyecto es opcional.** «Servicio de
+  hosting» no es un proyecto: obligar a inventarle uno para poder facturarlo
+  ensuciaría la lista de proyectos con cosas que no lo son. Con proyecto, la
+  factura suma a los números de ese proyecto y la base exige que vaya en su
+  moneda —si no, «facturado» y «cotizado» quedarían en monedas distintas y
+  restarlos sería justo lo que esta app no hace. Sin proyecto, la factura
+  lleva su propia moneda.
+- **Un cobro puede no tener proyecto**, desde el paso 17: es el que salda una
+  factura de servicio suelto.
 - **La deuda son dos números con nombres distintos, no dos «pendientes».**
   `Pendiente de cobro` es lo facturado sin cobrar, y se suma factura por
   factura con piso en cero: si no, una cobrada de más taparía la deuda de otra.

@@ -1,39 +1,42 @@
 import { mergeMoney, type MoneyByCurrency } from './money'
-import type { Factura, FacturaEstado, Payment, Project } from './types'
+import type {
+  Client,
+  Currency,
+  Factura,
+  FacturaEstado,
+  Payment,
+  Project,
+} from './types'
 
 /**
- * El estado de una factura y los números de facturación de un proyecto.
+ * El estado de una factura y los números de facturación.
  *
  * Nada de esto se guarda. El estado sale de comparar el importe de la
  * factura con lo que se le imputó de cobros, y por eso «que el cobro mueva
  * el estado» no existe como trabajo: editar, borrar o reimputar un cobro
  * reacomoda todo solo, y no llega el día en que una columna diga una cosa y
- * los cobros otra. Es la misma regla que en `tickets`, en `fixed_expenses` y
- * en los saldos de caja.
+ * los cobros otra. Misma regla que en `tickets`, `fixed_expenses` y los
+ * saldos de caja.
  */
 
 /**
- * Cuánto salda un cobro, en la moneda del PROYECTO.
+ * Cuánto salda un cobro, medido en `moneda`.
  *
- * Si entró en esa moneda, salda su propio importe. Si entró en otra, salda su
- * equivalente (`appliedAmount`, del paso 14) — el caso real de cotizar en
- * dólares y cobrar en pesos. Sin equivalente cargado no salda nada: no hay
- * cotización que inventar, y la pantalla ya avisa de esos.
+ * Si entró en esa moneda, salda su propio importe. Si entró en otra, salda
+ * su equivalente — el caso real de facturar en dólares y cobrar en pesos.
+ * Sin equivalente cargado no salda nada: no hay cotización que inventar, y
+ * la pantalla avisa de esos en vez de dejar la deuda alta sin explicación.
  */
-export function loQueSalda(pago: Payment, project: Project): number {
-  if (pago.currency === project.currency) return pago.amount
+export function loQueSalda(pago: Payment, moneda: Currency): number {
+  if (pago.currency === moneda) return pago.amount
   return pago.appliedAmount ?? 0
 }
 
-/** Lo imputado a una factura, en la moneda del proyecto. */
-export function imputadoA(
-  factura: Factura,
-  payments: Payment[],
-  project: Project,
-): number {
+/** Lo imputado a una factura, en la moneda de la factura. */
+export function imputadoA(factura: Factura, payments: Payment[]): number {
   return payments
     .filter((p) => p.facturaId === factura.id)
-    .reduce((sum, p) => sum + loQueSalda(p, project), 0)
+    .reduce((sum, p) => sum + loQueSalda(p, factura.moneda), 0)
 }
 
 /**
@@ -45,9 +48,8 @@ export function imputadoA(
 export function estadoFactura(
   factura: Factura,
   payments: Payment[],
-  project: Project,
 ): FacturaEstado {
-  const imputado = Math.round(imputadoA(factura, payments, project) * 100) / 100
+  const imputado = Math.round(imputadoA(factura, payments) * 100) / 100
   const importe = Math.round(factura.importe * 100) / 100
   if (imputado <= 0) return 'Pendiente'
   if (imputado >= importe) return 'Cancelada'
@@ -55,25 +57,90 @@ export function estadoFactura(
 }
 
 /** Lo que falta cobrar de esta factura. Nunca negativo. */
-export function saldoFactura(
-  factura: Factura,
-  payments: Payment[],
-  project: Project,
-): number {
-  return Math.max(0, factura.importe - imputadoA(factura, payments, project))
+export function saldoFactura(factura: Factura, payments: Payment[]): number {
+  return Math.max(0, factura.importe - imputadoA(factura, payments))
 }
 
-export interface ResumenFacturacion {
-  /** Total facturado del proyecto, en su moneda. */
-  facturado: number
+/**
+ * La moneda contra la que un cobro salda algo.
+ *
+ * La de su factura si está imputado; si no, la de su proyecto. Un cobro sin
+ * factura y sin proyecto no salda nada y devuelve null: es plata que entró y
+ * todavía no se sabe contra qué va.
+ */
+export function monedaDeSaldo(
+  pago: Payment,
+  facturas: Factura[],
+  projects: Project[],
+): Currency | null {
+  if (pago.facturaId) {
+    return facturas.find((f) => f.id === pago.facturaId)?.moneda ?? null
+  }
+  if (pago.projectId) {
+    return projects.find((p) => p.id === pago.projectId)?.currency ?? null
+  }
+  return null
+}
+
+// ---------------------------------------------------------------------
+// Por cliente — que es como se mira ahora
+// ---------------------------------------------------------------------
+
+export interface ResumenCliente {
+  facturas: Factura[]
+  /** Total facturado, por moneda: un cliente puede tener facturas en varias. */
+  facturado: MoneyByCurrency
   /**
    * LA DEUDA: lo facturado que todavía no se cobró.
    *
-   * Se suma factura por factura con piso en cero, no como
-   * `facturado − cobrado` global. Si no, una factura cobrada de más taparía
-   * la deuda de otra y el cliente figuraría al día debiendo. Es el mismo
-   * criterio que ya usa el pendiente por proyecto.
+   * Se suma factura por factura con piso en cero, no como facturado menos
+   * cobrado global. Si no, una factura cobrada de más taparía la deuda de
+   * otra y el cliente figuraría al día debiendo.
    */
+  pendienteDeCobro: MoneyByCurrency
+  /** Cobros de este cliente que no saldan ninguna factura. */
+  sinImputar: Payment[]
+}
+
+export function resumenCliente(
+  client: Client,
+  facturas: Factura[],
+  payments: Payment[],
+  projects: Project[],
+): ResumenCliente {
+  const propias = facturas
+    .filter((f) => f.clienteId === client.id)
+    .sort((a, b) => b.emitidaOn.localeCompare(a.emitidaOn))
+
+  // Los cobros del cliente: los que saldan una factura suya, más los de sus
+  // proyectos. Un cobro puede no tener proyecto (servicio suelto), así que
+  // no alcanza con mirar los proyectos.
+  const idsFacturas = new Set(propias.map((f) => f.id))
+  const idsProyectos = new Set(
+    projects.filter((p) => p.clientId === client.id).map((p) => p.id),
+  )
+  const suyos = payments.filter(
+    (p) =>
+      (p.facturaId && idsFacturas.has(p.facturaId)) ||
+      (p.projectId && idsProyectos.has(p.projectId)),
+  )
+
+  return {
+    facturas: propias,
+    facturado: mergeMoney(...propias.map((f) => ({ [f.moneda]: f.importe }))),
+    pendienteDeCobro: mergeMoney(
+      ...propias.map((f) => ({ [f.moneda]: saldoFactura(f, payments) })),
+    ),
+    sinImputar: suyos.filter((p) => p.facturaId === null),
+  }
+}
+
+// ---------------------------------------------------------------------
+// Por proyecto — sigue existiendo para las facturas que sí tienen uno
+// ---------------------------------------------------------------------
+
+export interface ResumenFacturacion {
+  facturado: number
   pendienteDeCobro: number
   /**
    * Trabajo acordado que todavía no se facturó: cotizado − facturado.
@@ -83,8 +150,6 @@ export interface ResumenFacturacion {
    * deuda a medirse contra las facturas.
    */
   sinFacturar: number
-  /** Cobros del proyecto que no están imputados a ninguna factura. */
-  sinImputar: Payment[]
   facturas: Factura[]
 }
 
@@ -93,50 +158,19 @@ export function resumenFacturacion(
   facturas: Factura[],
   payments: Payment[],
 ): ResumenFacturacion {
+  // Sólo las que apuntan a ESTE proyecto. Una factura de servicio suelto del
+  // mismo cliente no es de este proyecto y no entra: sumarla haría que «sin
+  // facturar» diera de menos y el proyecto pareciera facturado de más.
   const propias = facturas
     .filter((f) => f.projectId === project.id)
     .sort((a, b) => b.emitidaOn.localeCompare(a.emitidaOn))
-  const pagos = payments.filter((p) => p.projectId === project.id)
 
   const facturado = propias.reduce((s, f) => s + f.importe, 0)
-  const pendienteDeCobro = propias.reduce(
-    (s, f) => s + saldoFactura(f, pagos, project),
-    0,
-  )
 
   return {
     facturado,
-    pendienteDeCobro,
+    pendienteDeCobro: propias.reduce((s, f) => s + saldoFactura(f, payments), 0),
     sinFacturar: Math.max(0, project.quotedAmount - facturado),
-    sinImputar: pagos.filter((p) => p.facturaId === null),
     facturas: propias,
-  }
-}
-
-/** Lo mismo para varios proyectos, agrupado por moneda. */
-export function facturacionPorMoneda(
-  projects: Project[],
-  facturas: Factura[],
-  payments: Payment[],
-): {
-  facturado: MoneyByCurrency
-  pendienteDeCobro: MoneyByCurrency
-  sinFacturar: MoneyByCurrency
-} {
-  const facturado: MoneyByCurrency[] = []
-  const pendiente: MoneyByCurrency[] = []
-  const sinFacturar: MoneyByCurrency[] = []
-
-  for (const p of projects) {
-    const r = resumenFacturacion(p, facturas, payments)
-    facturado.push({ [p.currency]: r.facturado })
-    pendiente.push({ [p.currency]: r.pendienteDeCobro })
-    sinFacturar.push({ [p.currency]: r.sinFacturar })
-  }
-
-  return {
-    facturado: mergeMoney(...facturado),
-    pendienteDeCobro: mergeMoney(...pendiente),
-    sinFacturar: mergeMoney(...sinFacturar),
   }
 }
