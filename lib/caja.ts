@@ -148,7 +148,9 @@ export function accountLedger(
       id: `pay-${p.id}`,
       date: p.paidDate,
       concept: p.concept,
-      detail: projectName(p.projectId),
+      // Un cobro puede no tener proyecto desde el paso 17: es el que salda
+      // una factura de servicio suelto (hosting, soporte).
+      detail: p.projectId ? projectName(p.projectId) : 'Servicio',
       amount: p.amount,
       accountId,
       source: 'cobro',

@@ -68,7 +68,11 @@ export interface Client {
 /** Money that already came in. There is no scheduled/overdue notion. */
 export interface Payment {
   id: string
-  projectId: string
+  /**
+   * Opcional desde el paso 17: un cobro puede saldar una factura de servicio
+   * que no corresponde a ningún proyecto (hosting, soporte).
+   */
+  projectId: string | null
   concept: string
   /** Lo que entró de verdad, en `currency`. Es lo que suma al saldo de su cuenta. */
   amount: number
@@ -96,6 +100,14 @@ export interface Payment {
   notes: string
   /** Which account the money landed in. Null = not assigned yet. */
   accountId: string | null
+  /**
+   * Qué factura salda este cobro. Null = cobro sin imputar — un anticipo
+   * antes de facturar, por ejemplo.
+   *
+   * Un cobro salda UNA factura; una factura recibe varios cobros, y de ahí
+   * sale el estado Parcial.
+   */
+  facturaId: string | null
 }
 
 export const TASK_KINDS = ['interno', 'cliente', 'bloqueador'] as const
@@ -285,7 +297,12 @@ export interface FixedExpense {
   id: string
   concept: string
   kind: ExpenseKind
+  /**
+   * OBSOLETO desde el paso 18: el proveedor vive en `proveedorId`. Se
+   * conserva como referencia histórica y ya no se escribe.
+   */
   vendor: string
+  proveedorId: string | null
   projectId: string | null
   /** Lo ESPERADO por período, en `currency`. Nunca lo pagado. */
   amount: number
@@ -336,6 +353,18 @@ export interface MoneyMovement {
    * qué cubre; no se infiere de la fecha en que salió la plata.
    */
   periodStart: string | null
+  /** A quién se le pagó. Null = gasto sin proveedor identificado. */
+  proveedorId: string | null
+  /** Qué factura de proveedor salda. Null = pago sin imputar. */
+  facturaProveedorId: string | null
+  /**
+   * Cuánto salda, en la moneda de la FACTURA. Null = salda su propio importe.
+   *
+   * Espejo de `Payment.appliedAmount`: un movimiento está en la moneda de su
+   * cuenta, así que pagar desde una cuenta en pesos una factura en dólares
+   * necesita decir a cuánto equivale.
+   */
+  facturaAplicado: number | null
 }
 
 export interface ActivityEntry {
@@ -545,5 +574,101 @@ export interface Seguimiento {
   estado: SeguimientoEstado
   /** Cuándo hay que retomar. Null = no quedó fecha. */
   nextContactOn: string | null // ISO date
+  createdAt: string
+}
+
+// ---------------------------------------------------------------------
+// Facturas de cliente
+// ---------------------------------------------------------------------
+
+export const FACTURA_ESTADOS = ['Pendiente', 'Parcial', 'Cancelada'] as const
+
+export type FacturaEstado = (typeof FACTURA_ESTADOS)[number]
+
+/**
+ * Lo que se le facturó a un cliente por un proyecto.
+ *
+ * Es un REGISTRO INTERNO, no un comprobante de AFIP: sin tipo A/B/C, sin
+ * punto de venta, sin IVA discriminado y sin retenciones. Decisión tomada; el
+ * día que haya que espejar lo que se emite de verdad, esos campos se agregan.
+ *
+ * **No tiene estado.** Pendiente / Parcial / Cancelada salen de comparar
+ * `importe` con lo que se le imputó de cobros (`lib/facturas.ts`). Es la
+ * regla de siempre acá —lo derivado no se guarda— y además hace que «que el
+ * cobro mueva el estado» no exista como trabajo: no hay nada que mover, y no
+ * llega el día en que una columna diga una cosa y los cobros otra.
+ *
+ * **No tiene moneda propia**: está en la del proyecto. Una moneda propia
+ * abriría una tercera conversión —cotizado, facturado y cobrado en tres
+ * monedas— y este sistema no tiene cotización cargada para resolverla. Con la
+ * del proyecto, el `appliedAmount` de un cobro salda la factura sin ninguna
+ * cuenta extra: es el mismo número que ya salda lo cotizado.
+ */
+export interface Factura {
+  id: string
+  /** A quién se le factura. Obligatorio: una factura siempre tiene destinatario. */
+  clienteId: string
+  /**
+   * Opcional. Con proyecto, la factura suma a los números de ese proyecto
+   * —facturado, sin facturar—. Sin proyecto es un servicio suelto: hosting,
+   * soporte, lo que no es un desarrollo con presupuesto.
+   */
+  projectId: string | null
+  numero: string
+  /** Qué se factura: «Servicio de hosting». Es lo que se lee en la lista. */
+  concepto: string
+  emitidaOn: string // ISO date
+  /** Null = sin plazo pactado. */
+  venceOn: string | null
+  importe: number
+  /**
+   * Propia, porque sin proyecto no hay de dónde heredarla. Con proyecto, la
+   * base exige que sea la del proyecto: si no, «facturado» y «cotizado» del
+   * mismo proyecto quedarían en monedas distintas y restarlos —que es lo que
+   * hace «sin facturar»— sería justo lo que esta app no hace en ningún lado.
+   */
+  moneda: Currency
+  notas: string
+  createdAt: string
+}
+
+// ---------------------------------------------------------------------
+// Proveedores — el espejo de clientes, del lado de lo que sale
+// ---------------------------------------------------------------------
+
+export interface Proveedor {
+  id: string
+  nombre: string
+  cuit: string
+  contacto: string
+  telefono: string
+  email: string
+  /** Plazo de pago pactado, en días. Null = contra presentación. */
+  plazoDias: number | null
+  notas: string
+  createdAt: string
+}
+
+/**
+ * Lo que nos factura un proveedor.
+ *
+ * Misma forma que `Factura`, dada vuelta. **No tiene estado**: Pendiente /
+ * Parcial / Pagada salen de los movimientos de caja imputados.
+ *
+ * Moneda propia: un proveedor puede facturar en dólares aunque le paguemos
+ * desde una cuenta en pesos.
+ */
+export interface FacturaProveedor {
+  id: string
+  proveedorId: string
+  numero: string
+  concepto: string
+  emitidaOn: string // ISO date
+  venceOn: string | null
+  importe: number
+  moneda: Currency
+  /** A qué proyecto imputarle el gasto. Null = estructura. */
+  projectId: string | null
+  notas: string
   createdAt: string
 }

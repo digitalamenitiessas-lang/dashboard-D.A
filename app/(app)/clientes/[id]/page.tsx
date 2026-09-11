@@ -10,7 +10,6 @@ import {
   Mail,
   Pencil,
   Phone,
-  Receipt,
   Wrench,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -26,6 +25,7 @@ import { StatCard } from '@/components/shared/stat-card'
 import { StatusChip } from '@/components/shared/status-chip'
 import { WhatsappButton } from '@/components/shared/whatsapp-button'
 import { DetailCard, InfoRow } from '@/components/proyectos/detail-parts'
+import { FacturasCliente } from '@/components/facturas/facturas-card'
 import { EditClientDialog } from '@/components/clientes/edit-client-dialog'
 import { useStore } from '@/lib/store'
 import { enriquecerClientes } from '@/lib/clientes'
@@ -250,16 +250,7 @@ export default function ClienteDetallePage() {
         )}
       </DetailCard>
 
-      {/* Lo que viene en la próxima vuelta. Se anuncia en vez de dejar el
-          hueco mudo: el pedido incluye facturas con estado, y quien entre acá
-          las va a buscar justamente en esta pantalla. */}
-      <DetailCard title="Facturas" icon={Receipt}>
-        <p className="py-2 text-sm text-muted-foreground text-pretty">
-          Todavía no está el módulo de facturas. Va en el próximo paso: número,
-          fecha, importe con su moneda, y el estado —pendiente, parcial o
-          cancelada— saliendo de los cobros que se le imputen.
-        </p>
-      </DetailCard>
+      <FacturasCliente client={client} />
 
       {editOpen ? (
         <EditClientDialog

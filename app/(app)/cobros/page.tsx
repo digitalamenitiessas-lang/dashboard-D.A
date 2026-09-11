@@ -55,7 +55,8 @@ import type { Currency, Payment, PaymentMethod } from '@/lib/types'
 interface CobroRow {
   id: string
   kind: 'payment' | 'maintenance'
-  projectId: string
+  /** Null = cobro de un servicio que no corresponde a ningún proyecto. */
+  projectId: string | null
   concept: string
   amount: number
   currency: Currency
@@ -76,8 +77,15 @@ export default function CobrosPage() {
   const [addOpen, setAddOpen] = React.useState(false)
   const [editTarget, setEditTarget] = React.useState<Payment | null>(null)
 
+  /**
+   * Desde el paso 17 un cobro puede no tener proyecto: es el que salda una
+   * factura de servicio suelto (hosting, soporte). Se muestra «Servicio» en
+   * vez de un guión, para que se lea como lo que es y no como un dato que
+   * falta.
+   */
   const projectName = React.useCallback(
-    (id: string) => projects.find((p) => p.id === id)?.name ?? '—',
+    (id: string | null) =>
+      id ? (projects.find((p) => p.id === id)?.name ?? '—') : 'Servicio',
     [projects],
   )
 
@@ -270,12 +278,19 @@ export default function CobrosPage() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      <Link
-                        href={`/proyectos/${row.projectId}`}
-                        className="text-muted-foreground transition-colors hover:text-neon-green"
-                      >
-                        {projectName(row.projectId)}
-                      </Link>
+                      {/* Sin proyecto no hay a dónde linkear: el texto solo. */}
+                      {row.projectId ? (
+                        <Link
+                          href={`/proyectos/${row.projectId}`}
+                          className="text-muted-foreground transition-colors hover:text-neon-green"
+                        >
+                          {projectName(row.projectId)}
+                        </Link>
+                      ) : (
+                        <span className="text-muted-foreground">
+                          {projectName(row.projectId)}
+                        </span>
+                      )}
                     </TableCell>
                     {/* Con código y no con símbolo: esta tabla apila cobros
                         de proyectos en monedas distintas, y USD y ARS

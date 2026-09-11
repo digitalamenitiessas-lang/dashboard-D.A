@@ -19,6 +19,7 @@ import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
 import { formatMoney } from '@/lib/format'
+import { estadoFactura, saldoFactura } from '@/lib/facturas'
 import type { Currency, Payment, PaymentMethod } from '@/lib/types'
 
 const methods: PaymentMethod[] = [
@@ -39,10 +40,19 @@ export function EditPaymentDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
-  const { accounts, projects, updatePayment, deletePayment } = useStore()
+  const {
+    accounts,
+    projects,
+    payments,
+    facturas,
+    facturasReady,
+    updatePayment,
+    deletePayment,
+  } = useStore()
   const [concept, setConcept] = React.useState(payment.concept)
   const [amount, setAmount] = React.useState(String(payment.amount))
   const [currency, setCurrency] = React.useState<Currency>(payment.currency)
+  const [facturaId, setFacturaId] = React.useState(payment.facturaId ?? '')
   const [applied, setApplied] = React.useState(
     payment.appliedAmount === null ? '' : String(payment.appliedAmount),
   )
@@ -68,6 +78,24 @@ export function EditPaymentDialog({
   /** ¿Este cobro entró en una moneda distinta a la que se cotizó? */
   const otraMoneda = !!project && currency !== project.currency
 
+  /**
+   * Las facturas del proyecto que se pueden elegir: las que no están
+   * saldadas, más la que este cobro ya salda. Esa última figura como
+   * cancelada justamente por él, así que sin la excepción editar un cobro
+   * abriría el select vacío y guardar lo desimputaría sin querer — el mismo
+   * cuidado que ya tiene el select de períodos en el diálogo de Caja.
+   */
+  const facturasElegibles = React.useMemo(() => {
+    if (!project) return []
+    return facturas
+      .filter((f) => f.projectId === project.id)
+      .filter(
+        (f) =>
+          f.id === payment.facturaId ||
+          estadoFactura(f, payments) !== 'Cancelada',
+      )
+  }, [facturas, payments, project, payment.facturaId])
+
   const valid =
     !!concept.trim() &&
     Number(amount) > 0 &&
@@ -85,6 +113,7 @@ export function EditPaymentDialog({
       amount: Number(amount),
       currency,
       appliedAmount: otraMoneda ? Number(applied) : null,
+      facturaId: facturaId || null,
       paidDate,
       method: (method || null) as PaymentMethod | null,
       receipt: receipt.trim() || null,
@@ -150,6 +179,30 @@ export function EditPaymentDialog({
                   />
                 </Field>
               </div>
+
+              {facturasReady && project ? (
+                <Field>
+                  <FieldLabel htmlFor="epay-factura">
+                    Factura que salda
+                  </FieldLabel>
+                  <SimpleSelect
+                    id="epay-factura"
+                    value={facturaId}
+                    onValueChange={setFacturaId}
+                    placeholder="Sin imputar"
+                    options={[
+                      { value: '', label: 'Sin imputar' },
+                      ...facturasElegibles.map((f) => ({
+                        value: f.id,
+                        label: `${f.numero} · ${f.concepto || 'sin concepto'} · falta ${formatMoney(
+                          saldoFactura(f, payments),
+                          f.moneda,
+                        )}`,
+                      })),
+                    ]}
+                  />
+                </Field>
+              ) : null}
 
               {/* Acá es donde se arreglan los cobros que ya quedaron cargados
                   en otra moneda sin equivalente: hasta ahora no descontaban

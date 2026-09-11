@@ -42,6 +42,7 @@ import { EditProjectDialog } from '@/components/proyectos/edit-project-dialog'
 import { EditDevelopmentDialog } from '@/components/proyectos/edit-development-dialog'
 import { EditInfrastructureDialog } from '@/components/proyectos/edit-infrastructure-dialog'
 import { FixedCostsCard } from '@/components/proyectos/fixed-costs-card'
+import { FacturasProyecto } from '@/components/facturas/facturas-proyecto'
 import { EditMaintenanceDialog } from '@/components/mantenimientos/maintenance-dialogs'
 import { NewNoteDialog } from '@/components/notas/new-note-dialog'
 import { WhatsappButton } from '@/components/shared/whatsapp-button'
@@ -468,6 +469,14 @@ export default function ProjectDetailPage() {
 
         {/* COBROS */}
         <TabsContent value="cobros" className="mt-4">
+          {/* Arriba de los cobros a proposito: la factura es lo que se le
+              reclama al cliente y el cobro es lo que la salda. Leerlo en ese
+              orden es el orden en que pasa. */}
+          {project.type === 'terceros' ? (
+            <div className="mb-4">
+              <FacturasProyecto project={project} />
+            </div>
+          ) : null}
           <div className="glass overflow-hidden rounded-2xl">
             <div className="flex items-center justify-between gap-2 border-b border-white/5 p-4">
               <div>

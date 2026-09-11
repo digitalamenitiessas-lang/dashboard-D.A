@@ -1,0 +1,199 @@
+'use client'
+
+import * as React from 'react'
+import Link from 'next/link'
+import { Pencil, Receipt, TriangleAlert } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { DetailCard } from '@/components/proyectos/detail-parts'
+import { FacturaDialog } from '@/components/facturas/factura-dialog'
+import { useStore } from '@/lib/store'
+import {
+  estadoFactura,
+  imputadoA,
+  resumenCliente,
+  saldoFactura,
+} from '@/lib/facturas'
+import { formatDate, formatMoney, formatMoneyWithCode } from '@/lib/format'
+import { formatMoneyByCurrency, isEmptyMoney } from '@/lib/money'
+import { cn } from '@/lib/utils'
+import type { Client, Factura, FacturaEstado } from '@/lib/types'
+
+const estadoStyles: Record<FacturaEstado, string> = {
+  Pendiente: 'bg-amber-400/12 text-amber-300 border-amber-400/25',
+  Parcial: 'bg-neon-blue/10 text-neon-blue border-neon-blue/25',
+  Cancelada: 'bg-neon-green/12 text-neon-green border-neon-green/30',
+}
+
+/**
+ * Las facturas de un cliente, con su estado calculado.
+ *
+ * El estado no sale de ninguna columna: se compara el importe de cada
+ * factura con lo que se le imputó de cobros. Registrar un cobro imputado la
+ * mueve sola, y editarlo o borrarlo también — no hay un estado guardado que
+ * pueda quedar diciendo otra cosa.
+ *
+ * Una factura puede no tener proyecto: «Servicio de hosting» no es un
+ * desarrollo con presupuesto. Las que sí lo tienen muestran de cuál son.
+ */
+export function FacturasCliente({ client }: { client: Client }) {
+  const { projects, payments, facturas, facturasReady } = useStore()
+  const [editando, setEditando] = React.useState<Factura | null>(null)
+
+  const resumen = React.useMemo(
+    () => resumenCliente(client, facturas, payments, projects),
+    [client, facturas, payments, projects],
+  )
+
+  const nombreProyecto = (id: string | null) =>
+    id ? (projects.find((p) => p.id === id)?.name ?? '—') : null
+
+  if (!facturasReady) {
+    return (
+      <DetailCard title="Facturas" icon={Receipt}>
+        <p className="py-2 text-sm text-muted-foreground text-pretty">
+          Falta correr{' '}
+          <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs">
+            supabase/16_facturas.sql
+          </code>{' '}
+          y{' '}
+          <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs">
+            supabase/17_facturas_del_cliente.sql
+          </code>
+          . El resto de la app funciona normal mientras tanto.
+        </p>
+      </DetailCard>
+    )
+  }
+
+  return (
+    <>
+      <DetailCard
+        title="Facturas"
+        icon={Receipt}
+        action={<FacturaDialog cliente={client} triggerLabel="Nueva factura" />}
+      >
+        <div className="mb-3 grid grid-cols-2 gap-3 rounded-xl border border-white/5 bg-white/[0.02] p-3">
+          <div>
+            <p className="text-[11px] text-muted-foreground">Facturado</p>
+            <p className="mt-0.5 text-sm font-semibold tabular-nums">
+              {formatMoneyByCurrency(resumen.facturado)}
+            </p>
+          </div>
+          <div>
+            <p className="text-[11px] text-muted-foreground">
+              Pendiente de cobro
+            </p>
+            <p
+              className={cn(
+                'mt-0.5 text-sm font-semibold tabular-nums',
+                !isEmptyMoney(resumen.pendienteDeCobro) && 'text-amber-300',
+              )}
+            >
+              {formatMoneyByCurrency(resumen.pendienteDeCobro)}
+            </p>
+          </div>
+        </div>
+
+        {/* Plata que entró y no salda ninguna factura. No se pierde: se
+            muestra, con el mismo criterio que los cobros sin cuenta. */}
+        {resumen.sinImputar.length > 0 ? (
+          <div className="mb-3 flex items-start gap-2.5 rounded-xl border border-white/5 bg-white/[0.02] p-2.5">
+            <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+            <p className="text-xs leading-relaxed text-muted-foreground text-pretty">
+              <span className="tabular-nums">{resumen.sinImputar.length}</span>{' '}
+              cobro(s) sin imputar:{' '}
+              {resumen.sinImputar
+                .map(
+                  (p) =>
+                    `${p.concept} (${formatMoneyWithCode(p.amount, p.currency)})`,
+                )
+                .join(', ')}
+              . La plata entró pero no salda ninguna factura — se asignan
+              editando el cobro desde{' '}
+              <Link href="/cobros" className="text-neon-blue hover:underline">
+                Cobros
+              </Link>
+              .
+            </p>
+          </div>
+        ) : null}
+
+        {resumen.facturas.length === 0 ? (
+          <p className="py-2 text-sm text-muted-foreground text-pretty">
+            Sin facturas. Cargale una por el servicio que le damos —hosting,
+            soporte, una etapa del desarrollo— y queda abierta hasta que se
+            cobre.
+          </p>
+        ) : (
+          <ul className="flex flex-col divide-y divide-white/5">
+            {resumen.facturas.map((f) => {
+              const estado = estadoFactura(f, payments)
+              const imputado = imputadoA(f, payments)
+              const saldo = saldoFactura(f, payments)
+              const proyecto = nombreProyecto(f.projectId)
+              return (
+                <li key={f.id} className="flex flex-col gap-1.5 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium">
+                        {f.concepto || f.numero}
+                      </p>
+                      <p className="truncate text-xs text-muted-foreground tabular-nums">
+                        {f.numero} · {formatDate(f.emitidaOn)}
+                        {f.venceOn ? ` · vence ${formatDate(f.venceOn)}` : ''}
+                        {proyecto ? ` · ${proyecto}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={cn('font-medium', estadoStyles[estado])}
+                      >
+                        {estado}
+                      </Badge>
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        className="size-10 md:size-7"
+                        aria-label={`Editar factura ${f.numero}`}
+                        onClick={() => setEditando(f)}
+                      >
+                        <Pencil />
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 text-xs tabular-nums">
+                    <span className="text-muted-foreground">
+                      {estado === 'Cancelada'
+                        ? 'Cobrada'
+                        : `Cobrado ${formatMoney(imputado, f.moneda)} · falta ${formatMoney(saldo, f.moneda)}`}
+                    </span>
+                    <span className="font-semibold">
+                      {formatMoneyWithCode(f.importe, f.moneda)}
+                    </span>
+                  </div>
+                  {f.notas ? (
+                    <p className="text-xs text-muted-foreground text-pretty">
+                      {f.notas}
+                    </p>
+                  ) : null}
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </DetailCard>
+
+      {editando ? (
+        <FacturaDialog
+          key={editando.id}
+          factura={editando}
+          cliente={client}
+          open={!!editando}
+          onOpenChange={(o) => !o && setEditando(null)}
+        />
+      ) : null}
+    </>
+  )
+}

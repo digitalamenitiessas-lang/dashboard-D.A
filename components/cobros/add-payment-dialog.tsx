@@ -22,7 +22,8 @@ import { SimpleSelect } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
 import { useStore } from '@/lib/store'
-import { todayIso } from '@/lib/format'
+import { formatMoney, todayIso } from '@/lib/format'
+import { estadoFactura, saldoFactura } from '@/lib/facturas'
 import type { Currency, PaymentMethod } from '@/lib/types'
 
 const currencies: Currency[] = ['USD', 'ARS', 'EUR']
@@ -44,7 +45,8 @@ export function AddPaymentDialog({
   onOpenChange: (open: boolean) => void
   defaultProjectId?: string
 }) {
-  const { projects, accounts, addPayment } = useStore()
+  const { projects, accounts, payments, facturas, facturasReady, addPayment } =
+    useStore()
   const [projectId, setProjectId] = React.useState(defaultProjectId ?? '')
   const [concept, setConcept] = React.useState('')
   const [amount, setAmount] = React.useState('')
@@ -60,6 +62,7 @@ export function AddPaymentDialog({
   const [method, setMethod] = React.useState<PaymentMethod>('Transferencia')
   const [receipt, setReceipt] = React.useState('')
   const [accountId, setAccountId] = React.useState('')
+  const [facturaId, setFacturaId] = React.useState('')
   const [saving, setSaving] = React.useState(false)
 
   const project = projects.find((p) => p.id === projectId)
@@ -82,6 +85,29 @@ export function AddPaymentDialog({
 
   /** ¿El cobro entra en una moneda distinta a la que se cotizó? */
   const otraMoneda = !!project && currency !== project.currency
+
+  /**
+   * Las facturas de ESTE proyecto que todavía no están saldadas.
+   *
+   * Sólo del mismo proyecto: la base lo exige con un trigger, porque imputar
+   * el cobro de un proyecto a la factura de otro haría mentir a las dos
+   * pantallas a la vez —a una le sobra plata y a la otra le falta— sin nada
+   * que lo delate. Acá el select directamente no las ofrece.
+   *
+   * Las saldadas tampoco: si ya está cancelada, imputarle otro cobro es casi
+   * siempre un error de dedo.
+   */
+  const facturasAbiertas = React.useMemo(() => {
+    if (!project) return []
+    return facturas
+      .filter((f) => f.projectId === project.id)
+      .filter((f) => estadoFactura(f, payments) !== 'Cancelada')
+  }, [facturas, payments, project])
+
+  // Al cambiar de proyecto, una factura elegida del anterior deja de valer.
+  React.useEffect(() => {
+    setFacturaId('')
+  }, [projectId])
 
   // Importe, cotización y equivalente son tres vistas de la misma operación,
   // así que editar cualquiera mantiene honestas a las otras dos. Es el mismo
@@ -141,6 +167,7 @@ export function AddPaymentDialog({
       amount: Number(amount),
       currency,
       appliedAmount: otraMoneda ? Number(applied) : null,
+      facturaId: facturaId || null,
       paidDate,
       method,
       receipt: receipt.trim() || null,
@@ -153,6 +180,7 @@ export function AddPaymentDialog({
     setAmount('')
     setApplied('')
     setRate('')
+    setFacturaId('')
     setPaidDate(todayIso())
     setReceipt('')
     onOpenChange(false)
@@ -216,6 +244,43 @@ export function AddPaymentDialog({
               />
             </Field>
           </div>
+
+          {/* Imputar el cobro a una factura. Es lo que hace que el estado de
+              la factura se mueva solo: Pendiente → Parcial → Cancelada sale de
+              comparar su importe con lo imputado, así que no hay ningún estado
+              que actualizar a mano ni que se pueda desincronizar. */}
+          {facturasReady && project ? (
+            <Field>
+              <FieldLabel htmlFor="pay-factura">
+                Factura que salda (opcional)
+              </FieldLabel>
+              <SimpleSelect
+                id="pay-factura"
+                value={facturaId}
+                onValueChange={setFacturaId}
+                placeholder={
+                  facturasAbiertas.length === 0
+                    ? 'Este proyecto no tiene facturas abiertas'
+                    : 'Sin imputar'
+                }
+                options={[
+                  { value: '', label: 'Sin imputar' },
+                  ...facturasAbiertas.map((f) => ({
+                    value: f.id,
+                    label: `${f.numero} · ${f.concepto || 'sin concepto'} · falta ${formatMoney(
+                      saldoFactura(f, payments),
+                      f.moneda,
+                    )}`,
+                  })),
+                ]}
+              />
+              <p className="text-xs text-muted-foreground text-pretty">
+                {facturaId
+                  ? 'Al guardar, esta factura se recalcula sola.'
+                  : 'Sin imputar, la plata entra igual pero no salda ninguna factura.'}
+              </p>
+            </Field>
+          ) : null}
 
           {/* Sólo cuando el cobro entra en otra moneda que la cotizada. Es el
               caso real: se cotiza en dólares y pagan en pesos al cambio del

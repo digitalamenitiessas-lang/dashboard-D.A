@@ -1,7 +1,8 @@
 # Digital Amenities · Centro de Control
 
-Dashboard interno de gestión: proyectos y clientes, cobros, mantenimientos,
-gastos, caja, infraestructura, tickets, notas, seguimientos y alertas. Los **proyectos** son
+Dashboard interno de gestión: proyectos, clientes y proveedores, cobros,
+facturas, mantenimientos,
+gastos, caja, tickets, notas, seguimientos y alertas. Los **proyectos** son
 el núcleo del sistema y todo lo demás cuelga de ellos.
 
 ## Stack
@@ -53,6 +54,9 @@ de Supabase, en orden:
 | `13_mantenimiento_un_solo_estado.sql` | `active` pasa a derivarse de `status` |
 | `14_cobros_en_otra_moneda.sql` | Cobrar en una moneda y saldar en otra |
 | `15_ventana_de_cobro.sql` | El mantenimiento se cobra en una ventana de días |
+| `16_facturas.sql` | Facturas y su imputación de cobros |
+| `17_facturas_del_cliente.sql` | La factura pasa a ser del cliente, con proyecto opcional |
+| `18_proveedores.sql` | Proveedores, lo que nos facturan y sus pagos |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
 
 Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11**,
@@ -160,6 +164,7 @@ npx next dev
 ```
 app/(app)/        Pantallas autenticadas (dashboard, proyectos, cobros, ...)
 app/(app)/clientes  Sólo redirige: clientes es una pestaña de /proyectos
+app/(app)/infraestructura  Sólo redirige: vive en la pestaña Infra del proyecto
 app/login/        Pantalla de acceso
 proxy.ts          Refresca la sesión y manda a /login a quien no la tenga
 components/       UI (ui/ es shadcn; el resto es por dominio)
@@ -240,6 +245,36 @@ supabase/         Scripts SQL versionados
   no lo mira nadie. `dueDayTo` en null = ventana de un día, que es el
   comportamiento de siempre: los planes ya cargados no cambian hasta que
   alguien les ponga el último día.
+- **Una factura no tiene columna de estado.** Pendiente / Parcial / Cancelada
+  salen de comparar su importe con los cobros imputados (`lib/facturas.ts`).
+  Por eso «que el cobro mueva el estado» no existe como trabajo: editar,
+  borrar o reimputar un cobro reacomoda todo solo, y no llega el día en que
+  una columna diga una cosa y los cobros otra.
+- **Un pago a proveedor es un MOVIMIENTO DE CAJA, no una tabla aparte.** Si
+  viviera en su propia tabla, el saldo de una cuenta tendría dos orígenes —los
+  movimientos y los pagos— y tarde o temprano se desincronizan. Es lo mismo
+  que el paso 10 evitó con los gastos: «si existiera una tabla de egresos, el
+  saldo de una cuenta tendría dos fuentes». Un pago es un movimiento categoría
+  `Gasto` que además dice a quién se le pagó y qué factura salda.
+- **El proveedor dejó de ser texto libre.** Era `fixed_expenses.vendor`; el
+  paso 18 lo convierte en entidad y migra los valores cargados, para no
+  terminar con dos listas conviviendo. La columna `vendor` se conserva como
+  referencia y ya no se escribe — borrarla rompería guardar cualquier gasto
+  fijo hasta el deploy.
+- **Una factura es del CLIENTE, y el proyecto es opcional.** «Servicio de
+  hosting» no es un proyecto: obligar a inventarle uno para poder facturarlo
+  ensuciaría la lista de proyectos con cosas que no lo son. Con proyecto, la
+  factura suma a los números de ese proyecto y la base exige que vaya en su
+  moneda —si no, «facturado» y «cotizado» quedarían en monedas distintas y
+  restarlos sería justo lo que esta app no hace. Sin proyecto, la factura
+  lleva su propia moneda.
+- **Un cobro puede no tener proyecto**, desde el paso 17: es el que salda una
+  factura de servicio suelto.
+- **La deuda son dos números con nombres distintos, no dos «pendientes».**
+  `Pendiente de cobro` es lo facturado sin cobrar, y se suma factura por
+  factura con piso en cero: si no, una cobrada de más taparía la deuda de otra.
+  `Sin facturar` es cotizado − facturado, que no es deuda pero es plata que
+  hay que facturar.
 - **Un cobro puede entrar en una moneda y saldar otra.** Se cotiza en dólares
   y el cliente paga en pesos al cambio del día: `amount`+`currency` es lo que
   entró (suma al saldo de su cuenta) y `appliedAmount` es cuánto de lo
