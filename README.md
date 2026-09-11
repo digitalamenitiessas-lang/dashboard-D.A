@@ -2,7 +2,7 @@
 
 Dashboard interno de gestión: proyectos, clientes y proveedores, cobros,
 facturas, mantenimientos,
-gastos, caja, infraestructura, tickets, notas, seguimientos y alertas. Los **proyectos** son
+gastos, caja, tickets, notas, seguimientos y alertas. Los **proyectos** son
 el núcleo del sistema y todo lo demás cuelga de ellos.
 
 ## Stack
@@ -164,6 +164,7 @@ npx next dev
 ```
 app/(app)/        Pantallas autenticadas (dashboard, proyectos, cobros, ...)
 app/(app)/clientes  Sólo redirige: clientes es una pestaña de /proyectos
+app/(app)/infraestructura  Sólo redirige: vive en la pestaña Infra del proyecto
 app/login/        Pantalla de acceso
 proxy.ts          Refresca la sesión y manda a /login a quien no la tenga
 components/       UI (ui/ es shadcn; el resto es por dominio)

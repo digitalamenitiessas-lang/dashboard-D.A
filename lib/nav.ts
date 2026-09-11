@@ -4,7 +4,6 @@ import {
   Landmark,
   LayoutDashboard,
   Receipt,
-  Server,
   StickyNote,
   Ticket,
   Truck,
@@ -37,7 +36,6 @@ export const navItems: NavItem[] = [
   // saliendo de un solo lugar.
   { label: 'Proveedores', href: '/proveedores', icon: Truck },
   { label: 'Mantenimientos', href: '/mantenimientos', icon: Wrench },
-  { label: 'Infraestructura', href: '/infraestructura', icon: Server },
   { label: 'Tickets', href: '/tickets', icon: Ticket },
   { label: 'Notas e ideas', href: '/notas', icon: StickyNote },
   { label: 'Alertas', href: '/alertas', icon: Bell },
