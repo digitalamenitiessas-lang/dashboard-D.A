@@ -25,6 +25,19 @@
 
 
 -- ---------------------------------------------------------------------
+-- 0. El esquema, explícito
+--
+-- El SQL Editor no siempre corre con "public" en el search_path, y un
+-- "create table" que nombra un enum sin calificar falla con
+-- «type "currency" does not exist» aunque el tipo esté ahí, creado por
+-- 03_schema.sql. Se fija el camino Y además los tipos van con esquema:
+-- cualquiera de las dos cosas alcanza sola, las dos juntas hacen que el
+-- script no dependa de cómo se lo ejecute.
+-- ---------------------------------------------------------------------
+set search_path = public;
+
+
+-- ---------------------------------------------------------------------
 -- 1. La tabla
 --
 -- `numero` es un correlativo propio, por identidad. Puede saltarse un
@@ -48,14 +61,14 @@ create table if not exists recibos (
 
   -- Lo que se cobró, en la moneda en que efectivamente entró.
   importe         numeric(14,2) not null check (importe > 0),
-  moneda          currency not null,
+  moneda          public.currency not null,
 
   -- Sólo cuando se cobró en una moneda distinta a la facturada: cuánto
   -- saldaba de la deuda original y a qué cotización. Es el dato que le
   -- da tranquilidad al cliente («me tomaron el dólar a 1530») y el que
   -- evita la discusión tres meses después.
   importe_saldado numeric(14,2),
-  moneda_saldada  currency,
+  moneda_saldada  public.currency,
   cotizacion      numeric(12,4),
 
   -- El número de la factura que salda, como texto: si la factura se
@@ -106,7 +119,7 @@ declare
   pago     record;
   cli      text;
   fac_num  text := '';
-  fac_mon  currency;
+  fac_mon  public.currency;
   fac_imp  numeric;
   nuevo    recibos;
 begin

@@ -21,6 +21,8 @@ import {
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
+import { CotizacionHint } from '@/components/shared/cotizacion-hint'
+import { sugerenciaParaCobro, useCotizacion } from '@/lib/cotizacion'
 import { useStore } from '@/lib/store'
 import { formatMoney, todayIso } from '@/lib/format'
 import { estadoFactura, saldoFactura } from '@/lib/facturas'
@@ -85,6 +87,14 @@ export function AddPaymentDialog({
 
   /** ¿El cobro entra en una moneda distinta a la que se cotizó? */
   const otraMoneda = !!project && currency !== project.currency
+
+  // `rate` acá es «1 moneda-del-proyecto en moneda-del-cobro», que es
+  // justo lo que devuelve la sugerencia de cobro: la de venta, porque el
+  // cliente tiene que ir a comprar la moneda de la deuda.
+  const cotizacion = useCotizacion()
+  const sugerencia = otraMoneda
+    ? sugerenciaParaCobro(project.currency, currency, cotizacion)
+    : null
 
   /**
    * Las facturas de ESTE proyecto que todavía no están saldadas.
@@ -308,6 +318,11 @@ export function AddPaymentDialog({
                     value={rate}
                     onValueChange={cambiarCotizacion}
                     placeholder="0"
+                  />
+                  <CotizacionHint
+                    sugerencia={sugerencia}
+                    yaUsada={!!sugerencia && Number(rate) === sugerencia.valor}
+                    onUsar={(v) => cambiarCotizacion(String(v))}
                   />
                 </Field>
                 <Field>

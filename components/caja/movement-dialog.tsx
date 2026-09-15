@@ -17,6 +17,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
+import { CotizacionHint } from '@/components/shared/cotizacion-hint'
+import { sugerenciaParaCambio, useCotizacion } from '@/lib/cotizacion'
 import { useStore } from '@/lib/store'
 import { estadoFacturaProveedor, saldoFacturaProveedor } from '@/lib/proveedores'
 import { formatDate, formatMoney, formatMoneyWithCode, todayIso } from '@/lib/format'
@@ -319,6 +321,16 @@ export function MovementDialog({
     !!fromAccount &&
     !!toAccount &&
     !sameCurrency
+
+  // Un cambio propio no usa el mismo lado del mostrador que un cobro: si
+  // vendemos dólares el banco nos los compra, y si los compramos nos los
+  // vende. Usar siempre el de venta inflaría lo que creemos que vale la
+  // caja en dólares.
+  const cotizacion = useCotizacion()
+  const sugerencia =
+    crossCurrency && fromAccount && toAccount
+      ? sugerenciaParaCambio(fromAccount.currency, toAccount.currency, cotizacion)
+      : null
 
   // Amount, rate and result are three views of the same operation, so
   // editing any one of them keeps the other two honest. Whichever two the
@@ -772,6 +784,11 @@ export function MovementDialog({
                     onValueChange={changeRate}
                     decimals={6}
                     placeholder="0"
+                  />
+                  <CotizacionHint
+                    sugerencia={sugerencia}
+                    yaUsada={!!sugerencia && Number(rate) === sugerencia.valor}
+                    onUsar={(v) => changeRate(String(v))}
                   />
                 </Field>
               ) : null}

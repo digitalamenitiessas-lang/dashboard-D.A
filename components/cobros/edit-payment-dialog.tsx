@@ -17,6 +17,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { MoneyInput } from '@/components/shared/money-input'
 import { AccountSelect } from '@/components/caja/account-select'
+import { CotizacionHint } from '@/components/shared/cotizacion-hint'
+import { sugerenciaParaCobro, useCotizacion } from '@/lib/cotizacion'
 import { useStore } from '@/lib/store'
 import { formatMoney } from '@/lib/format'
 import { estadoFactura, saldoFactura } from '@/lib/facturas'
@@ -77,6 +79,14 @@ export function EditPaymentDialog({
   const project = projects.find((p) => p.id === payment.projectId)
   /** ¿Este cobro entró en una moneda distinta a la que se cotizó? */
   const otraMoneda = !!project && currency !== project.currency
+
+  // Sugerencia del BNA para calcular el equivalente sin sacar la
+  // calculadora. Es la de venta: el cliente compro la moneda de la deuda.
+  const cotizacion = useCotizacion()
+  const sugerencia =
+    otraMoneda && Number(amount) > 0
+      ? sugerenciaParaCobro(project.currency, currency, cotizacion)
+      : null
 
   /**
    * Las facturas del proyecto que se pueden elegir: las que no están
@@ -230,6 +240,17 @@ export function EditPaymentDialog({
                       value={applied}
                       onValueChange={setApplied}
                       placeholder="0"
+                    />
+                    {/* Acá no hay campo de cotización: se ofrece calcular el
+                        equivalente directamente, que es el único dato que la
+                        base guarda. */}
+                    <CotizacionHint
+                      sugerencia={sugerencia}
+                      onUsar={(v) =>
+                        setApplied(
+                          String(Math.round((Number(amount) / v) * 100) / 100),
+                        )
+                      }
                     />
                     {Number(applied) > 0 ? null : (
                       <p className="text-xs text-amber-300">
