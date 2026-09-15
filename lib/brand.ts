@@ -1,0 +1,20 @@
+/**
+ * El isotipo de Digital Amenities (el monograma DA), como dato y no como
+ * componente.
+ *
+ * Vive acá y no dentro de `BrandMark` porque hay dos consumidores que no
+ * comparten nada más: el header, que lo pinta como SVG heredando el color
+ * del texto, y el recibo en PDF, que lo rasteriza sobre un canvas porque
+ * jsPDF no dibuja paths. Duplicar novecientos caracteres de path entre los
+ * dos es la clase de cosa que queda desincronizada al primer retoque.
+ *
+ * Arte original: public/icono.svg
+ */
+
+export const BRAND_VIEWBOX = { width: 861.18, height: 1128.66 }
+
+export const BRAND_PATH =
+  'M602.25,1057.46c81.88-46.82,146.09-113.18,190.84-197.22,44.85-84.25,67.59-183.96,67.59-296.37s-22.74-213.8-67.59-297.75c-44.74-83.72-108.94-149.6-190.8-195.82C520.25,23.98,421.39.5,308.46.5H.5v1127.66h307.96c112.92,0,211.77-23.79,293.79-70.7ZM612.74,182.1c40.11,35.75,73.29,79.46,98.62,129.9h0c36.73,73.16,55.36,157.9,55.36,251.86,0,53.16-6.07,103.91-18.03,150.84l-1.86,7.29h-332.4l187.4-549.61,10.9,9.71ZM88.87,1056.51V74.01h219.58c86.29,0,162.72,17.97,227.15,53.43l7.15,3.93-319.86,925.13H88.87ZM396.79,778.78h331.31l-5.88,13.54c-3.74,8.62-7.28,16.26-10.83,23.38-36.85,74.03-90.06,133.3-158.15,176.17-66.73,42.02-147.17,63.76-239.09,64.6l-13.74.13,96.38-277.81Z'
+
+/** Como lo firma la empresa en un documento que sale para afuera. */
+export const BRAND_NAME = 'Digital Amenities'

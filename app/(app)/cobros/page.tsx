@@ -36,6 +36,7 @@ import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
 import { AddPaymentDialog } from '@/components/cobros/add-payment-dialog'
 import { EditPaymentDialog } from '@/components/cobros/edit-payment-dialog'
+import { ReciboButton } from '@/components/cobros/recibo-button'
 import { useStore } from '@/lib/store'
 import { projectFinance } from '@/lib/derive'
 import { formatDate, formatMoney, formatMoneyWithCode } from '@/lib/format'
@@ -313,14 +314,20 @@ export default function CobrosPage() {
                     <TableCell>
                       <div className="flex items-center justify-end gap-2">
                         {payment ? (
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label={`Editar pago: ${row.concept}`}
-                            onClick={() => setEditTarget(payment)}
-                          >
-                            <Pencil />
-                          </Button>
+                          <>
+                            <ReciboButton
+                              paymentId={payment.id}
+                              concepto={row.concept}
+                            />
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-label={`Editar pago: ${row.concept}`}
+                              onClick={() => setEditTarget(payment)}
+                            >
+                              <Pencil />
+                            </Button>
+                          </>
                         ) : (
                           <Link
                             href="/mantenimientos"
