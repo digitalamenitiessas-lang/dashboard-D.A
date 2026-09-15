@@ -257,7 +257,9 @@ export default function CobrosPage() {
                 <TableHead>Fecha de pago</TableHead>
                 <TableHead>Medio</TableHead>
                 <TableHead nowrap={false}>Comprobante</TableHead>
-                <TableHead className="text-right">Acción</TableHead>
+                <TableHead stickyRight className="text-right">
+                  Acción
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -311,7 +313,11 @@ export default function CobrosPage() {
                     >
                       {row.receipt ?? '—'}
                     </TableCell>
-                    <TableCell>
+                    {/* Fija a la derecha: son siete columnas y en un teléfono
+                        esta quedaba fuera de pantalla, así que el botón de
+                        recibo existía pero había que arrastrar la tabla hasta
+                        el final para encontrarlo. */}
+                    <TableCell stickyRight>
                       <div className="flex items-center justify-end gap-2">
                         {payment ? (
                           <>
