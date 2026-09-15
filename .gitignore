@@ -18,3 +18,14 @@ node_modules
 *.tsbuildinfo
 # Supabase CLI
 supabase/.temp/
+
+# Este proyecto usa pnpm, y el unico lockfile valido es pnpm-lock.yaml.
+#
+# Con dos lockfiles versionados Vercel elige pnpm, asi que una dependencia
+# instalada con npm entra en package.json y en package-lock.json pero le queda
+# invisible al build: `pnpm install --frozen-lockfile` ve una dependencia
+# declarada que su lockfile no tiene y aborta. Paso exactamente eso con jspdf.
+# Se ignoran para que el error no se pueda volver a commitear.
+package-lock.json
+yarn.lock
+bun.lockb

@@ -1,3 +1,34 @@
+# Configuracion de pnpm.
+
+
+# --- Que paquetes pueden correr sus scripts de instalacion -----------------
+#
+# pnpm los bloquea a todos por defecto, porque un postinstall es codigo
+# arbitrario de un tercero corriendo en tu maquina y en el servidor de build.
+# Cuando aparece uno nuevo pnpm lo anota aca con "set this to true or false" y
+# corta el install con error hasta que alguien conteste. Estaban sin contestar,
+# asi que `pnpm install` terminaba en error 1.
 allowBuilds:
-  msw: set this to true or false
-  sharp: set this to true or false
+  # Next lo usa para optimizar imagenes, y su script baja el binario nativo de
+  # la plataforma. Sin esto no sirve.
+  sharp: true
+
+  # Lo arrastra la CLI de shadcn, que es scaffolding: nada del dashboard lo usa
+  # en runtime. Su postinstall copia un service worker dentro de public/, y el
+  # nuestro —public/sw.js, el de las push— ya esta ahi.
+  msw: false
+
+  # Su postinstall solo imprime un pedido de donacion.
+  core-js: false
+
+
+# --- Por que las "overrides" siguen en package.json -------------------------
+#
+# pnpm 11 avisa que el campo "pnpm" de package.json ya no se lee y que las
+# overrides van aca. Pero Vercel no soporta pnpm 11: cuando no reconoce la
+# version cae a pnpm 9, que lee las overrides del lugar viejo y NO mira este
+# archivo. Moverlas ahora las apagaria justo donde importa, y encima el
+# lockfile quedaria con una seccion de overrides que pnpm 9 no puede explicar
+# —eso es un `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` y el deploy no compila.
+#
+# Se mueven el dia que Vercel soporte pnpm 11, no antes.
