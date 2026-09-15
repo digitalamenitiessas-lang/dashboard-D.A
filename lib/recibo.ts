@@ -302,6 +302,36 @@ export const nombreArchivo = (recibo: Recibo) =>
   `Recibo-${numeroFormateado(recibo.numero)}-${recibo.clienteNombre.replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`
 
 /**
+ * ¿Conviene abrir la hoja de compartir del sistema, o descargar y listo?
+ *
+ * En el teléfono conviene: es el camino a WhatsApp, que es como termina
+ * llegándole el recibo al cliente. En una computadora no. Chrome y Edge en
+ * Windows declaran `canShare` igual, así que preguntarle sólo a él abría el
+ * panel de compartir de Windows: un rodeo largo para algo que en un
+ * escritorio se espera que sea una descarga y nada más.
+ *
+ * `userAgentData.mobile` es el dato directo, pero lo dan sólo los navegadores
+ * Chromium. Para el resto —Safari incluido, que es justo el que importa en
+ * iPhone y iPad— se mira el puntero: `coarse` es un dedo. Un notebook con
+ * pantalla táctil y mouse reporta `fine`, así que no se hace pasar por
+ * teléfono.
+ */
+function conviene_compartir(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
+    return false
+  }
+
+  const ua = (navigator as Navigator & { userAgentData?: { mobile?: boolean } })
+    .userAgentData
+  if (typeof ua?.mobile === 'boolean') return ua.mobile
+
+  return (
+    window.matchMedia?.('(pointer: coarse)').matches === true &&
+    navigator.maxTouchPoints > 0
+  )
+}
+
+/**
  * Lo entrega por donde se pueda: la hoja de compartir del sistema en el
  * celular, una descarga en la computadora.
  *
@@ -317,7 +347,7 @@ export async function entregarRecibo(
   const nombre = nombreArchivo(recibo)
   const archivo = new File([blob], nombre, { type: 'application/pdf' })
 
-  if (typeof navigator !== 'undefined' && navigator.canShare?.({ files: [archivo] })) {
+  if (conviene_compartir() && navigator.canShare?.({ files: [archivo] })) {
     try {
       await navigator.share({
         files: [archivo],
