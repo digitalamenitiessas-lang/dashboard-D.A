@@ -22,13 +22,15 @@ allowBuilds:
   core-js: false
 
 
-# --- Por que las "overrides" siguen en package.json -------------------------
+# --- Versiones forzadas -----------------------------------------------------
 #
-# pnpm 11 avisa que el campo "pnpm" de package.json ya no se lee y que las
-# overrides van aca. Pero Vercel no soporta pnpm 11: cuando no reconoce la
-# version cae a pnpm 9, que lee las overrides del lugar viejo y NO mira este
-# archivo. Moverlas ahora las apagaria justo donde importa, y encima el
-# lockfile quedaria con una seccion de overrides que pnpm 9 no puede explicar
-# —eso es un `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` y el deploy no compila.
+# hono estaba fijado en el campo "pnpm" de package.json. Vercel corre pnpm 10,
+# que SI lee ese campo, mientras que el pnpm 11 de nuestras maquinas lo ignora
+# por completo. Esa asimetria fue la que rompio el deploy: en local no habia
+# overrides que contrastar contra el lockfile y el install pasaba limpio, y en
+# el build la config decia una cosa y el lockfile otra.
 #
-# Se mueven el dia que Vercel soporte pnpm 11, no antes.
+# Aca lo leen las dos versiones por igual, y el lockfile quedo regenerado para
+# que la seccion "overrides" que ahora tiene coincida con esto.
+overrides:
+  hono: 4.12.25
