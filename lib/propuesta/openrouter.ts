@@ -21,6 +21,22 @@ import { SISTEMA, mensajeUsuario } from './prompt'
 const URL_OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions'
 
 /**
+ * El esquema que viaja en el pedido.
+ *
+ * `z.toJSONSchema` mete un `$schema` en la raíz. Es correcto como JSON Schema
+ * suelto, pero la salida estructurada estricta valida la forma del esquema que
+ * le mandás y varios proveedores rechazan las claves que no esperan. Se calcula
+ * una sola vez, al cargar el módulo: es el mismo objeto en cada pedido.
+ */
+const ESQUEMA_JSON = (() => {
+  const { $schema, ...resto } = z.toJSONSchema(PropuestaSchema, {
+    target: 'draft-2020-12',
+  }) as Record<string, unknown>
+  void $schema
+  return resto
+})()
+
+/**
  * El modelo se elige por variable de entorno y no se hardcodea: si uno sale
  * caro, se porta mal con la salida estructurada o directamente desaparece del
  * catálogo, se cambia sin tocar código ni redeployar.
@@ -86,11 +102,7 @@ export async function estructurar(
       temperature: 0.3,
       response_format: {
         type: 'json_schema',
-        json_schema: {
-          name: 'propuesta',
-          strict: true,
-          schema: z.toJSONSchema(PropuestaSchema, { target: 'draft-2020-12' }),
-        },
+        json_schema: { name: 'propuesta', strict: true, schema: ESQUEMA_JSON },
       },
     }),
   })
