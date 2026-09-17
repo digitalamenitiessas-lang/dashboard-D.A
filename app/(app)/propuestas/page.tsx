@@ -10,7 +10,7 @@
  */
 
 import * as React from 'react'
-import { Download, FileDown, RotateCcw, Sparkles, Undo2 } from 'lucide-react'
+import { Download, RotateCcw, Sparkles, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
@@ -24,8 +24,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { PageHeader } from '@/components/shared/page-header'
 import { SimpleSelect } from '@/components/shared/simple-select'
 import { EditorPropuesta } from '@/components/propuestas/editor'
+import { HistorialPropuestas } from '@/components/propuestas/historial'
 import { useStore } from '@/lib/store'
-import { formatDate } from '@/lib/format'
 import {
   aEditable,
   aPropuesta,
@@ -49,7 +49,13 @@ const EJEMPLO = `Reunión con Juan del Hotel Las Lomas. Quieren un sistema para 
 Cotizamos 8500 dólares el desarrollo, más 300 por mes de mantenimiento a partir de la implementación. 50% al arranque y el resto contra entrega. Plazo 12 semanas. La propuesta vale 15 días.`
 
 export default function PropuestasPage() {
-  const { clients, propuestas, propuestasReady, emitirPropuesta } = useStore()
+  const {
+    clients,
+    propuestas,
+    propuestasReady,
+    emitirPropuesta,
+    deletePropuesta,
+  } = useStore()
 
   const [texto, setTexto] = React.useState('')
   const [plantilla, setPlantilla] = React.useState<Plantilla>('corta')
@@ -173,6 +179,17 @@ export default function PropuestasPage() {
     }
     // Sin pasar por la IA y sin tomar un número nuevo: es el mismo papel.
     await entregarPropuesta(ok.data, emitida.numero, emitida.plantilla)
+  }
+
+  async function borrar(id: string) {
+    const emitida = propuestas.find((p) => p.id === id)
+    const ok = await deletePropuesta(id)
+    if (!ok) return // el store ya avisó con un toast rojo
+    toast.success('Propuesta borrada', {
+      description: emitida
+        ? `N° ${numeroPropuesta(emitida.numero)} · ${emitida.clienteNombre}`
+        : undefined,
+    })
   }
 
   if (!propuestasReady) {
@@ -303,44 +320,11 @@ export default function PropuestasPage() {
         </>
       )}
 
-      {propuestas.length > 0 ? (
-        <section className="flex flex-col gap-3">
-          <h2 className="text-sm font-semibold">Ya mandadas</h2>
-          <ul className="glass flex flex-col divide-y divide-white/5 rounded-2xl">
-            {propuestas.map((p) => (
-              <li
-                key={p.id}
-                className="flex items-center gap-3 p-3 sm:p-4"
-              >
-                <span className="shrink-0 rounded-md bg-white/5 px-2 py-1 text-xs tabular-nums text-muted-foreground">
-                  {numeroPropuesta(p.numero)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{p.clienteNombre}</p>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {p.titulo} · {formatDate(p.emitidaOn)}
-                  </p>
-                </div>
-                <span className="shrink-0 text-sm font-semibold tabular-nums">
-                  {p.moneda}{' '}
-                  {new Intl.NumberFormat('es-AR', {
-                    maximumFractionDigits: 0,
-                  }).format(p.total)}
-                </span>
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={`Volver a bajar la propuesta ${numeroPropuesta(p.numero)}`}
-                  title="Volver a bajar"
-                  onClick={() => void volverABajar(p.id)}
-                >
-                  <FileDown />
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
+      <HistorialPropuestas
+        propuestas={propuestas}
+        onBajar={(id) => void volverABajar(id)}
+        onBorrar={borrar}
+      />
     </div>
   )
 }

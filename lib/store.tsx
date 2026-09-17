@@ -150,6 +150,11 @@ interface StoreValue {
     contenido: Propuesta,
     plantilla: Plantilla,
   ) => Promise<PropuestaEmitida | null>
+  /**
+   * Borra de verdad, no archiva. El número no se reusa: la secuencia sigue
+   * avanzando, así que borrar la 7 no hace que la próxima sea la 7.
+   */
+  deletePropuesta: (id: string) => Promise<boolean>
   refresh: () => Promise<void>
 
   // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
@@ -1438,6 +1443,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, fail],
   )
 
+  /**
+   * Se borra sin avisar por push, a diferencia de la emisión.
+   *
+   * La emisión avisa porque es información que los socios quieren: salió una
+   * cotización y por tanto. Un borrado es casi siempre limpieza de pruebas, y
+   * un aviso por cada una convierte las notificaciones en ruido — que es como
+   * se deja de mirar la que sí importaba.
+   */
+  const deletePropuesta = React.useCallback(
+    async (id: string) => {
+      try {
+        const { error } = await supabase.from('propuestas').delete().eq('id', id)
+        if (error) throw error
+        setPropuestas((prev) => prev.filter((p) => p.id !== id))
+        return true
+      } catch (e) {
+        fail('borrar la propuesta', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
   const addProveedor = React.useCallback(
     async (prov: Omit<Proveedor, 'id' | 'createdAt'>) => {
       try {
@@ -2083,6 +2111,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       propuestas,
       propuestasReady,
       emitirPropuesta,
+      deletePropuesta,
       refresh,
       addProject,
       updateProject,
@@ -2164,6 +2193,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       propuestas,
       propuestasReady,
       emitirPropuesta,
+      deletePropuesta,
       refresh,
       addProject,
       updateProject,
