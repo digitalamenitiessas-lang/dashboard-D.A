@@ -84,7 +84,28 @@ export async function proxy(request: NextRequest) {
     return redirect
   }
 
+  /**
+   * A una llamada de API no se la manda a /login.
+   *
+   * El `fetch()` seguiría el redirect sin chistar, se traería el HTML de la
+   * pantalla de login con un 200, y el `res.json()` del otro lado explotaría
+   * con «Unexpected token '<'» — un error incomprensible justo cuando lo que
+   * pasó es simplemente que se venció la sesión. Un 401 con un JSON se puede
+   * mostrar.
+   *
+   * No se saca /api del matcher, que sería más corto: el `getUser()` de acá
+   * arriba es lo que rota el access token vencido y deja las cookies nuevas
+   * (ver `irA`). Excluirlo apagaría ese refresco en cada llamada de API.
+   */
+  const esApi = pathname.startsWith('/api/')
+  const cortar = (status: number, error: string) => {
+    const r = NextResponse.json({ codigo: 'sin_sesion', error }, { status })
+    for (const cookie of response.cookies.getAll()) r.cookies.set(cookie)
+    return r
+  }
+
   if (!user) {
+    if (esApi) return cortar(401, 'Se venció la sesión. Recargá la página.')
     return isLoginRoute ? response : irA('/login')
   }
 
@@ -92,6 +113,7 @@ export async function proxy(request: NextRequest) {
   // todavía no eligió contraseña propia, no hay ninguna otra pantalla a la
   // que pueda ir.
   if (needsPasswordChange(user)) {
+    if (esApi) return cortar(403, 'Primero tenés que cambiar la contraseña.')
     return isPasswordRoute ? response : irA(RUTA_CAMBIAR_PASSWORD)
   }
 
