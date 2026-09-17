@@ -3,20 +3,34 @@
 /**
  * El recibo que se le entrega al cliente, en PDF.
  *
+ * Queda acá sólo lo que es del recibo: su forma, su layout y el importe en
+ * letras. El papel compartido con los demás documentos —el membrete, la
+ * paleta, el monograma, la entrega— vive en `lib/pdf.ts`.
+ *
  * Se arma en el navegador y no en el servidor porque el destino habitual
  * es mandarlo por WhatsApp desde el celular: generarlo acá permite
  * pasárselo directo a la hoja de compartir del sistema, sin que el
  * archivo dé la vuelta por ningún lado. En la computadora, donde no hay
  * hoja de compartir, se descarga.
- *
- * El monograma se rasteriza sobre un canvas a partir del mismo path que
- * usa el header (lib/brand.ts): jsPDF no dibuja paths SVG, y mandar una
- * imagen aparte significaría que el logo del papel y el de la pantalla
- * puedan quedar distintos.
  */
 
-import { BRAND_NAME, BRAND_PATH, BRAND_VIEWBOX } from './brand'
+import { BRAND_NAME } from './brand'
+import {
+  ANCHO,
+  GRIS,
+  M,
+  TINTA,
+  UTIL,
+  encabezado,
+  entregarPdf,
+  fechaLarga,
+  miles,
+} from './pdf'
 import type { Currency } from './types'
+
+// Lo importa `components/cobros/recibo-button.tsx` desde acá: el botón no
+// tiene por qué saber que el PDF se dibuja en otro módulo.
+export { precargarPdf } from './pdf'
 
 export interface Recibo {
   id: string
@@ -146,88 +160,29 @@ export function importeEnLetras(monto: number, moneda: Currency): string {
   return `${texto} con ${enteroEnLetras(centavos, true)} ${nombreCentavo}`
 }
 
-// ---------------------------------------------------------------------
-// Formato
-// ---------------------------------------------------------------------
-
-const miles = (n: number) =>
-  new Intl.NumberFormat('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n)
-
-const fechaLarga = (iso: string) =>
-  new Intl.DateTimeFormat('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })
-    .format(new Date(iso + (iso.length === 10 ? 'T00:00:00' : '')))
-
 /** «0001». Cuatro dígitos, que es lo que hace que un talonario se vea serio. */
 export const numeroFormateado = (n: number) => String(n).padStart(4, '0')
-
-/**
- * El monograma como PNG, a la resolución que se le pida.
- *
- * Se pide bien grande (el triple del tamaño impreso) porque el PDF lo
- * escala y un logo pixelado en un comprobante se nota enseguida.
- */
-function monogramaPng(alturaPx: number, color: string): string | null {
-  if (typeof document === 'undefined') return null
-  const escala = alturaPx / BRAND_VIEWBOX.height
-  const anchoPx = Math.ceil(BRAND_VIEWBOX.width * escala)
-
-  const canvas = document.createElement('canvas')
-  canvas.width = anchoPx
-  canvas.height = alturaPx
-  const ctx = canvas.getContext('2d')
-  if (!ctx || typeof Path2D === 'undefined') return null
-
-  ctx.scale(escala, escala)
-  ctx.fillStyle = color
-  ctx.fill(new Path2D(BRAND_PATH))
-  return canvas.toDataURL('image/png')
-}
 
 // ---------------------------------------------------------------------
 // El documento
 // ---------------------------------------------------------------------
 
-const TINTA = '#111111'
-const GRIS = '#6b7280'
-
 export async function construirReciboPdf(recibo: Recibo): Promise<Blob> {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
-  const M = 20 // margen
-  const ANCHO = 210
-  const util = ANCHO - M * 2
-  let y = M
-
-  // ---- Encabezado --------------------------------------------------
-  const logo = monogramaPng(240, TINTA)
-  if (logo) {
-    const alto = 16
-    doc.addImage(logo, 'PNG', M, y, (BRAND_VIEWBOX.width / BRAND_VIEWBOX.height) * alto, alto)
-  }
-
-  doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(TINTA)
-  doc.text(BRAND_NAME.toUpperCase(), M + 16, y + 7)
-  doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(GRIS)
-  doc.text('Desarrollo de software', M + 16, y + 11.5)
-
-  doc.setFont('helvetica', 'bold').setFontSize(18).setTextColor(TINTA)
-  doc.text('RECIBO', ANCHO - M, y + 6, { align: 'right' })
-  doc.setFontSize(11)
-  doc.text(`N° ${numeroFormateado(recibo.numero)}`, ANCHO - M, y + 12.5, { align: 'right' })
-  doc.setFont('helvetica', 'normal').setFontSize(9).setTextColor(GRIS)
-  doc.text(fechaLarga(recibo.emitidoOn), ANCHO - M, y + 17.5, { align: 'right' })
-
-  y += 26
-  doc.setDrawColor(TINTA).setLineWidth(0.6).line(M, y, ANCHO - M, y)
-  y += 12
+  let y = encabezado(doc, M, {
+    titulo: 'RECIBO',
+    referencia: `N° ${numeroFormateado(recibo.numero)}`,
+    fecha: fechaLarga(recibo.emitidoOn),
+  })
 
   // ---- A quién y por qué -------------------------------------------
   const dato = (etiqueta: string, valor: string) => {
     doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(GRIS)
     doc.text(etiqueta.toUpperCase(), M, y)
     doc.setFont('helvetica', 'bold').setFontSize(11).setTextColor(TINTA)
-    const lineas = doc.splitTextToSize(valor, util) as string[]
+    const lineas = doc.splitTextToSize(valor, UTIL) as string[]
     doc.text(lineas, M, y + 5)
     y += 5 + lineas.length * 5.5 + 5
   }
@@ -240,7 +195,7 @@ export async function construirReciboPdf(recibo: Recibo): Promise<Blob> {
   y += 2
   const altoCaja = recibo.cotizacion ? 34 : 26
   doc.setFillColor(245, 245, 245).setDrawColor(220, 220, 220).setLineWidth(0.3)
-  doc.roundedRect(M, y, util, altoCaja, 2, 2, 'FD')
+  doc.roundedRect(M, y, UTIL, altoCaja, 2, 2, 'FD')
 
   doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(GRIS)
   doc.text('IMPORTE RECIBIDO', M + 6, y + 8)
@@ -265,7 +220,7 @@ export async function construirReciboPdf(recibo: Recibo): Promise<Blob> {
   doc.setFont('helvetica', 'italic').setFontSize(10).setTextColor(TINTA)
   const letras = doc.splitTextToSize(
     importeEnLetras(recibo.importe, recibo.moneda).replace(/^./, (c) => c.toUpperCase()) + '.',
-    util,
+    UTIL,
   ) as string[]
   doc.text(letras, M, y + 5)
   y += 5 + letras.length * 5 + 8
@@ -274,7 +229,7 @@ export async function construirReciboPdf(recibo: Recibo): Promise<Blob> {
     doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(GRIS)
     doc.text('OBSERVACIONES', M, y)
     doc.setFontSize(9.5).setTextColor(TINTA)
-    const notas = doc.splitTextToSize(recibo.notas, util) as string[]
+    const notas = doc.splitTextToSize(recibo.notas, UTIL) as string[]
     doc.text(notas, M, y + 5)
     y += 5 + notas.length * 4.5 + 6
   }
@@ -301,79 +256,14 @@ export async function construirReciboPdf(recibo: Recibo): Promise<Blob> {
 export const nombreArchivo = (recibo: Recibo) =>
   `Recibo-${numeroFormateado(recibo.numero)}-${recibo.clienteNombre.replace(/[^\p{L}\p{N}]+/gu, '-')}.pdf`
 
-/**
- * ¿Conviene abrir la hoja de compartir del sistema, o descargar y listo?
- *
- * En el teléfono conviene: es el camino a WhatsApp, que es como termina
- * llegándole el recibo al cliente. En una computadora no. Chrome y Edge en
- * Windows declaran `canShare` igual, así que preguntarle sólo a él abría el
- * panel de compartir de Windows: un rodeo largo para algo que en un
- * escritorio se espera que sea una descarga y nada más.
- *
- * `userAgentData.mobile` es el dato directo, pero lo dan sólo los navegadores
- * Chromium. Para el resto —Safari incluido, que es justo el que importa en
- * iPhone y iPad— se mira el puntero: `coarse` es un dedo. Un notebook con
- * pantalla táctil y mouse reporta `fine`, así que no se hace pasar por
- * teléfono.
- */
-function conviene_compartir(): boolean {
-  if (typeof navigator === 'undefined' || typeof window === 'undefined') {
-    return false
-  }
-
-  const ua = (navigator as Navigator & { userAgentData?: { mobile?: boolean } })
-    .userAgentData
-  if (typeof ua?.mobile === 'boolean') return ua.mobile
-
-  return (
-    window.matchMedia?.('(pointer: coarse)').matches === true &&
-    navigator.maxTouchPoints > 0
-  )
-}
-
-/**
- * Lo entrega por donde se pueda: la hoja de compartir del sistema en el
- * celular, una descarga en la computadora.
- *
- * `navigator.share` exige el gesto del usuario, y el `await` del import de
- * jsPDF lo consume en Safari. Por eso el que llama tiene que haber
- * precargado el módulo con `precargarPdf()` al abrir la pantalla: así el
- * import ya está resuelto y el click llega entero hasta acá.
- */
+/** Arma el PDF y lo entrega: hoja de compartir en el celular, descarga en la compu. */
 export async function entregarRecibo(
   recibo: Recibo,
 ): Promise<'compartido' | 'descargado' | 'cancelado'> {
   const blob = await construirReciboPdf(recibo)
-  const nombre = nombreArchivo(recibo)
-  const archivo = new File([blob], nombre, { type: 'application/pdf' })
-
-  if (conviene_compartir() && navigator.canShare?.({ files: [archivo] })) {
-    try {
-      await navigator.share({
-        files: [archivo],
-        title: `Recibo N° ${numeroFormateado(recibo.numero)}`,
-        text: `Recibo N° ${numeroFormateado(recibo.numero)} — ${BRAND_NAME}`,
-      })
-      return 'compartido'
-    } catch (e) {
-      // Cerrar la hoja de compartir tira AbortError. No es un error que
-      // haya que mostrarle a nadie: el usuario decidió no mandarlo.
-      if ((e as Error)?.name === 'AbortError') return 'cancelado'
-      // Cualquier otra cosa (permisos, tipo no soportado) cae a la descarga.
-    }
-  }
-
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nombre
-  a.click()
-  // El revoke inmediato le gana a la descarga en algunos navegadores.
-  setTimeout(() => URL.revokeObjectURL(url), 10_000)
-  return 'descargado'
-}
-
-/** Resuelve el import pesado antes de que haga falta. Ver `entregarRecibo`. */
-export function precargarPdf() {
-  void import('jspdf')
+  const n = numeroFormateado(recibo.numero)
+  return entregarPdf(blob, nombreArchivo(recibo), {
+    title: `Recibo N° ${n}`,
+    text: `Recibo N° ${n} — ${BRAND_NAME}`,
+  })
 }
