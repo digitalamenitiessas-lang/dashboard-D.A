@@ -1,5 +1,6 @@
 import {
   Bell,
+  FileText,
   FolderKanban,
   Landmark,
   LayoutDashboard,
@@ -29,6 +30,9 @@ export const navItems: NavItem[] = [
   // `enriquecerClientes()`, así que no pueden discrepar.
   { label: 'Clientes', href: '/clientes', icon: Users },
   { label: 'Cobros', href: '/cobros', icon: Wallet },
+  // Va entre Cobros y Caja: es la herramienta comercial, y lo que sale de
+  // acá es lo que despues aparece en Cobros si el cliente acepta.
+  { label: 'Propuestas', href: '/propuestas', icon: FileText },
   { label: 'Caja', href: '/caja', icon: Landmark },
   { label: 'Gastos', href: '/gastos', icon: Receipt },
   // Espejo de Clientes, del lado de lo que sale. Los pagos no viven acá:

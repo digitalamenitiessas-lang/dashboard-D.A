@@ -29,6 +29,7 @@ import {
   mapFactura,
   mapFacturaProveedor,
   mapProveedor,
+  mapPropuesta,
   mapSeguimiento,
   mapTicket,
   paymentToRow,
@@ -37,6 +38,11 @@ import {
   seguimientoToRow,
   ticketToRow,
 } from './mappers'
+import type {
+  Plantilla,
+  Propuesta,
+  PropuestaEmitida,
+} from './propuesta/schema'
 import { formatMoney, formatMoneyWithCode, todayIso } from './format'
 import type {
   Account,
@@ -130,6 +136,20 @@ interface StoreValue {
   facturasReady: boolean
   /** False mientras no se haya corrido `18_proveedores.sql`. Ídem. */
   proveedoresReady: boolean
+  propuestas: PropuestaEmitida[]
+  /** False mientras no se haya corrido `23_propuestas.sql`. Ídem. */
+  propuestasReady: boolean
+  /**
+   * Devuelve la propuesta con su número, o `null` si falló.
+   *
+   * Rompe la convención de `Promise<boolean>` del resto de las mutaciones
+   * porque quien llama necesita el número: va impreso en el PDF que se baja
+   * inmediatamente después.
+   */
+  emitirPropuesta: (
+    contenido: Propuesta,
+    plantilla: Plantilla,
+  ) => Promise<PropuestaEmitida | null>
   refresh: () => Promise<void>
 
   // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
@@ -372,6 +392,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [seguimientosReady, setSeguimientosReady] = React.useState(true)
   const [facturasReady, setFacturasReady] = React.useState(true)
   const [proveedoresReady, setProveedoresReady] = React.useState(true)
+  const [propuestas, setPropuestas] = React.useState<PropuestaEmitida[]>([])
+  const [propuestasReady, setPropuestasReady] = React.useState(true)
 
   /**
    * Surfaces the failure to the user and keeps it out of the happy path.
@@ -393,7 +415,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg, fa, pv, fp] =
+      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg, fa, pv, fp, pr] =
         await Promise.all([
         supabase
           .from('projects')
@@ -457,6 +479,11 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .from('facturas_proveedor')
           .select('*')
           .order('emitida_on', { ascending: false }),
+        // Por número descendente: la última que se mandó es la que se busca.
+        supabase
+          .from('propuestas')
+          .select('*')
+          .order('numero', { ascending: false }),
         ])
 
       // Caja is the newest module: if 08_caja.sql hasn't been run yet its
@@ -491,6 +518,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const proveedoresMissing = missing(pv.error) || missing(fp.error)
       setProveedoresReady(!proveedoresMissing)
 
+      const propuestasMissing = missing(pr.error)
+      setPropuestasReady(!propuestasMissing)
+
       const firstError =
         p.error ||
         c.error ||
@@ -504,7 +534,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         (ticketsMissing ? null : tk.error) ||
         (seguimientosMissing ? null : sg.error) ||
         (facturasMissing ? null : fa.error) ||
-        (proveedoresMissing ? null : pv.error || fp.error)
+        (proveedoresMissing ? null : pv.error || fp.error) ||
+        (propuestasMissing ? null : pr.error)
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -522,6 +553,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setFacturas((fa.data ?? []).map(mapFactura))
       setProveedores((pv.data ?? []).map(mapProveedor))
       setFacturasProveedor((fp.data ?? []).map(mapFacturaProveedor))
+      setPropuestas((pr.data ?? []).map(mapPropuesta))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -1376,6 +1408,36 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // propia de pagos le daría dos fuentes al saldo de cada cuenta, que es
   // justo lo que el módulo de caja evita.
   // -------------------------------------------------------------------
+  // -------------------------------------------------------------------
+  // Propuestas
+  //
+  // Se emite al bajar el PDF, no al generarla con IA: un borrador que nunca
+  // llegó a papel no es una propuesta. La numeración y el total los pone la
+  // base —ver `supabase/23_propuestas.sql`— así que esto es una RPC y no un
+  // insert: dos personas emitiendo a la vez no se pisan, y el total que
+  // queda registrado no depende de que la pantalla haya sumado bien.
+  // -------------------------------------------------------------------
+  const emitirPropuesta = React.useCallback(
+    async (contenido: Propuesta, plantilla: Plantilla) => {
+      try {
+        const { data, error } = await supabase
+          .rpc('emitir_propuesta', {
+            p_contenido: contenido,
+            p_plantilla: plantilla,
+          })
+          .single()
+        if (error) throw error
+        const emitida = mapPropuesta(data as Record<string, unknown>)
+        setPropuestas((prev) => [emitida, ...prev])
+        return emitida
+      } catch (e) {
+        fail('emitir la propuesta', e)
+        return null
+      }
+    },
+    [supabase, fail],
+  )
+
   const addProveedor = React.useCallback(
     async (prov: Omit<Proveedor, 'id' | 'createdAt'>) => {
       try {
@@ -2018,6 +2080,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       seguimientosReady,
       facturasReady,
       proveedoresReady,
+      propuestas,
+      propuestasReady,
+      emitirPropuesta,
       refresh,
       addProject,
       updateProject,
@@ -2096,6 +2161,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       seguimientosReady,
       facturasReady,
       proveedoresReady,
+      propuestas,
+      propuestasReady,
+      emitirPropuesta,
       refresh,
       addProject,
       updateProject,

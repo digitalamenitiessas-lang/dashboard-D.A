@@ -108,3 +108,27 @@ export function totalPropuesta(items: ItemPropuesta[]): number {
 /** Cuántos ítems quedaron sin precio. El PDF lo aclara al pie del total. */
 export const itemsSinPrecio = (items: ItemPropuesta[]) =>
   items.filter((i) => i.precioUnitario === null).length
+
+// ---------------------------------------------------------------------
+// La propuesta ya emitida
+//
+// Aparece recién cuando alguien baja el PDF: es el momento en que deja de
+// ser un borrador y pasa a ser un papel que salió para afuera. Ver el
+// encabezado de `supabase/23_propuestas.sql`.
+// ---------------------------------------------------------------------
+
+export interface PropuestaEmitida {
+  id: string
+  numero: number
+  emitidaOn: string
+  plantilla: Plantilla
+  clienteNombre: string
+  titulo: string
+  /** Lo recalcula la base del propio contenido, no lo manda la pantalla. */
+  total: number
+  moneda: Propuesta['moneda']
+  validezDias: number | null
+  /** La foto completa: con esto se vuelve a dibujar el PDF sin pasar por la IA. */
+  contenido: Propuesta
+  createdAt: string
+}

@@ -23,6 +23,7 @@ import type {
   Ticket,
   TicketGrade,
 } from './types'
+import type { PropuestaEmitida } from './propuesta/schema'
 
 /** Untyped Supabase row; the mappers below are the typed boundary. */
 type Row = Record<string, any>
@@ -632,3 +633,31 @@ export const PROJECT_SELECT = `
   project_maintenance(*),
   infrastructure_costs(*)
 `
+
+// ---------------------------------------------------------------------
+// Propuestas
+//
+// No hay `propuestaToRow`: la propuesta no se inserta desde el cliente. La
+// emite la RPC `emitir_propuesta`, que arma las columnas de listado leyendo
+// el propio json — así no puede pasar que el PDF diga una cosa y la lista
+// otra. Ver `supabase/23_propuestas.sql`.
+// ---------------------------------------------------------------------
+
+export function mapPropuesta(r: Row): PropuestaEmitida {
+  return {
+    id: r.id,
+    numero: num(r.numero),
+    emitidaOn: str(r.emitida_on),
+    plantilla: r.plantilla === 'larga' ? 'larga' : 'corta',
+    clienteNombre: str(r.cliente_nombre),
+    titulo: str(r.titulo),
+    total: num(r.total),
+    moneda: r.moneda ?? 'USD',
+    validezDias: r.validez_dias == null ? null : num(r.validez_dias),
+    // `contenido` llega ya parseado desde PostgREST. No se valida acá: si
+    // estuviera roto, el único momento en que importa es al volver a dibujar
+    // el PDF, y ahí sí se revisa y se avisa.
+    contenido: r.contenido,
+    createdAt: str(r.created_at),
+  }
+}
