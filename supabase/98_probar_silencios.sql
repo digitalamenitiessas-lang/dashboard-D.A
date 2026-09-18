@@ -25,19 +25,19 @@ set search_path = public;
 do $$
 declare
   hoy     date := (now() at time zone 'America/Argentina/Buenos_Aires')::date;
-  asunto  text := 'zzz-prueba-silencio';
+  v_asunto text := 'zzz-prueba-silencio';
   a       avisos;
   sonaron int;
   bien    int := 0;
   mal     int := 0;
 begin
   -- Punto de partida limpio.
-  delete from notifications where dedupe_key like asunto || '%';
-  delete from avisos where avisos.asunto = asunto;
+  delete from notifications where dedupe_key like v_asunto || '%';
+  delete from avisos where avisos.asunto = v_asunto;
 
   -- ---- 1. Un aviso nuevo suena --------------------------------------
-  perform avisar_recurrente(asunto, 'PRUEBA', 'cuerpo', '/alertas', 1);
-  select count(*) into sonaron from notifications where dedupe_key like asunto || '%';
+  perform avisar_recurrente(v_asunto, 'PRUEBA', 'cuerpo', '/alertas', 1);
+  select count(*) into sonaron from notifications where dedupe_key like v_asunto || '%';
   if sonaron = 1 then
     raise notice 'OK   1. un aviso nuevo suena';  bien := bien + 1;
   else
@@ -45,8 +45,8 @@ begin
   end if;
 
   -- ---- 2. Silenciado y sin empeorar, NO suena ------------------------
-  perform silenciar_aviso(asunto, 7);
-  select * into a from avisos where avisos.asunto = asunto;
+  perform silenciar_aviso(v_asunto, 7);
+  select * into a from avisos where avisos.asunto = v_asunto;
   if a.silenciado_at is not null and a.silenciado_gravedad = 1
      and a.silenciado_hasta = hoy + 7 then
     raise notice 'OK   2a. quedo silenciado por 7 dias, con gravedad 1 de referencia';
@@ -57,9 +57,9 @@ begin
     mal := mal + 1;
   end if;
 
-  delete from notifications where dedupe_key like asunto || '%';
-  perform avisar_recurrente(asunto, 'PRUEBA', 'cuerpo', '/alertas', 1);
-  select count(*) into sonaron from notifications where dedupe_key like asunto || '%';
+  delete from notifications where dedupe_key like v_asunto || '%';
+  perform avisar_recurrente(v_asunto, 'PRUEBA', 'cuerpo', '/alertas', 1);
+  select count(*) into sonaron from notifications where dedupe_key like v_asunto || '%';
   if sonaron = 0 then
     raise notice 'OK   2b. con la misma gravedad NO suena';  bien := bien + 1;
   else
@@ -67,9 +67,9 @@ begin
   end if;
 
   -- ---- 3. Si empeora, vuelve ----------------------------------------
-  perform avisar_recurrente(asunto, 'PRUEBA', 'cuerpo peor', '/alertas', 2);
-  select count(*) into sonaron from notifications where dedupe_key like asunto || '%';
-  select * into a from avisos where avisos.asunto = asunto;
+  perform avisar_recurrente(v_asunto, 'PRUEBA', 'cuerpo peor', '/alertas', 2);
+  select count(*) into sonaron from notifications where dedupe_key like v_asunto || '%';
+  select * into a from avisos where avisos.asunto = v_asunto;
   if sonaron = 1 then
     raise notice 'OK   3a. al empeorar vuelve a sonar, sin esperar el plazo';
     bien := bien + 1;
@@ -83,13 +83,13 @@ begin
   end if;
 
   -- ---- 4. Si se cumple el plazo, vuelve ------------------------------
-  perform silenciar_aviso(asunto, 7);
+  perform silenciar_aviso(v_asunto, 7);
   -- Se hace viejo el plazo a mano, que es mas rapido que esperar una semana.
-  update avisos set silenciado_hasta = hoy - 1 where avisos.asunto = asunto;
-  delete from notifications where dedupe_key like asunto || '%';
-  perform avisar_recurrente(asunto, 'PRUEBA', 'cuerpo', '/alertas', 2);
-  select count(*) into sonaron from notifications where dedupe_key like asunto || '%';
-  select * into a from avisos where avisos.asunto = asunto;
+  update avisos set silenciado_hasta = hoy - 1 where avisos.asunto = v_asunto;
+  delete from notifications where dedupe_key like v_asunto || '%';
+  perform avisar_recurrente(v_asunto, 'PRUEBA', 'cuerpo', '/alertas', 2);
+  select count(*) into sonaron from notifications where dedupe_key like v_asunto || '%';
+  select * into a from avisos where avisos.asunto = v_asunto;
   if sonaron = 1 and a.silenciado_at is null then
     raise notice 'OK   4. vencido el plazo vuelve a sonar y se limpia el silencio';
     bien := bien + 1;
@@ -99,11 +99,11 @@ begin
   end if;
 
   -- ---- 5. Sin plazo: se calla hasta que empeore -----------------------
-  perform silenciar_aviso(asunto, null);
-  select * into a from avisos where avisos.asunto = asunto;
-  delete from notifications where dedupe_key like asunto || '%';
-  perform avisar_recurrente(asunto, 'PRUEBA', 'cuerpo', '/alertas', 2);
-  select count(*) into sonaron from notifications where dedupe_key like asunto || '%';
+  perform silenciar_aviso(v_asunto, null);
+  select * into a from avisos where avisos.asunto = v_asunto;
+  delete from notifications where dedupe_key like v_asunto || '%';
+  perform avisar_recurrente(v_asunto, 'PRUEBA', 'cuerpo', '/alertas', 2);
+  select count(*) into sonaron from notifications where dedupe_key like v_asunto || '%';
   if a.silenciado_hasta is null and sonaron = 0 then
     raise notice 'OK   5. sin plazo se queda callado';  bien := bien + 1;
   else
@@ -112,11 +112,11 @@ begin
   end if;
 
   -- ---- 6. Reactivar a mano -------------------------------------------
-  perform reactivar_aviso(asunto);
-  select * into a from avisos where avisos.asunto = asunto;
-  delete from notifications where dedupe_key like asunto || '%';
-  perform avisar_recurrente(asunto, 'PRUEBA', 'cuerpo', '/alertas', 2);
-  select count(*) into sonaron from notifications where dedupe_key like asunto || '%';
+  perform reactivar_aviso(v_asunto);
+  select * into a from avisos where avisos.asunto = v_asunto;
+  delete from notifications where dedupe_key like v_asunto || '%';
+  perform avisar_recurrente(v_asunto, 'PRUEBA', 'cuerpo', '/alertas', 2);
+  select count(*) into sonaron from notifications where dedupe_key like v_asunto || '%';
   if a.silenciado_at is null and sonaron = 1 then
     raise notice 'OK   6. reactivar a mano lo vuelve a hacer sonar';  bien := bien + 1;
   else
@@ -135,8 +135,8 @@ begin
   end if;
 
   -- ---- Limpieza -------------------------------------------------------
-  delete from notifications where dedupe_key like asunto || '%';
-  delete from avisos where avisos.asunto = asunto;
+  delete from notifications where dedupe_key like v_asunto || '%';
+  delete from avisos where avisos.asunto = v_asunto;
 
   raise notice '--------------------------------';
   if mal = 0 then
