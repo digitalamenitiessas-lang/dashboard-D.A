@@ -28,6 +28,7 @@ import {
   ticketAge,
   type AlertLevel,
 } from '@/lib/derive'
+import { asuntosSilenciados } from '@/lib/avisos'
 import { formatMoney, formatDate, relativeDays, daysUntil } from '@/lib/format'
 import {
   collectionRatio,
@@ -55,6 +56,7 @@ export default function DashboardPage() {
     tickets,
     ticketsReady,
     seguimientos,
+    avisos,
   } = useStore()
 
   const finances = projects.map((p) =>
@@ -108,6 +110,9 @@ export default function DashboardPage() {
   const ticketsByGrade = openTicketsByGrade(tickets)
   const topTickets = openTickets.slice(0, 5)
 
+  // Sin las silenciadas, igual que la campana y /alertas: si no, la pantalla
+  // de inicio te muestra justo lo que pediste no ver más.
+  const callados = asuntosSilenciados(avisos)
   const alerts = buildAlerts({
     projects,
     notes,
@@ -115,7 +120,9 @@ export default function DashboardPage() {
     maintenanceCharges,
     tickets,
     seguimientos,
-  }).slice(0, 5)
+  })
+    .filter((a) => !callados.has(a.id))
+    .slice(0, 5)
 
   const recentProjects = [...projects]
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))

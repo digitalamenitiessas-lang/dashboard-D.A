@@ -24,8 +24,13 @@ import { SimpleSelect } from '@/components/shared/simple-select'
 import { StatCard } from '@/components/shared/stat-card'
 import { SectionCard } from '@/components/dashboard/section-card'
 import { PushHealth } from '@/components/layout/push-health'
+import {
+  AvisosSilenciados,
+  SilenciarBoton,
+} from '@/components/alertas/silenciar'
 import { useStore } from '@/lib/store'
 import { buildAlerts, type AlertItem, type AlertLevel } from '@/lib/derive'
+import { asuntosSilenciados, estaSilenciado } from '@/lib/avisos'
 import { formatDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -62,10 +67,15 @@ export default function AlertasPage() {
     maintenanceCharges,
     tickets,
     seguimientos,
+    avisos,
   } = useStore()
   const [levelFilter, setLevelFilter] = React.useState<string>('todas')
   const [categoryFilter, setCategoryFilter] = React.useState('todas')
 
+  // Las silenciadas salen de la lista Y de todos los contadores. Una alerta
+  // callada que igual suma al numerito de «críticas» deja el numerito sin
+  // significado, que es lo mismo que no tenerlo.
+  const callados = React.useMemo(() => asuntosSilenciados(avisos), [avisos])
   const alerts = buildAlerts({
     projects,
     notes,
@@ -73,7 +83,9 @@ export default function AlertasPage() {
     maintenanceCharges,
     tickets,
     seguimientos,
-  })
+  }).filter((a) => !callados.has(a.id))
+
+  const silenciados = React.useMemo(() => avisos.filter(estaSilenciado), [avisos])
 
   const categories = Array.from(new Set(alerts.map((a) => a.category))).sort()
 
@@ -219,6 +231,7 @@ export default function AlertasPage() {
                           <ArrowUpRight className="size-4" />
                         </Link>
                       ) : null}
+                      <SilenciarBoton asunto={a.id} titulo={a.title} />
                     </div>
                   </li>
                 ))}
@@ -227,6 +240,8 @@ export default function AlertasPage() {
           ))}
         </div>
       )}
+
+      <AvisosSilenciados avisos={silenciados} />
 
       <SectionCard title="Historial de actividad" icon={CircleCheck}>
         <ul className="flex flex-col divide-y divide-white/5">

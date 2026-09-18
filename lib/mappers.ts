@@ -24,6 +24,7 @@ import type {
   TicketGrade,
 } from './types'
 import type { PropuestaEmitida } from './propuesta/schema'
+import type { Aviso } from './avisos'
 
 /** Untyped Supabase row; the mappers below are the typed boundary. */
 type Row = Record<string, any>
@@ -659,5 +660,27 @@ export function mapPropuesta(r: Row): PropuestaEmitida {
     // el PDF, y ahí sí se revisa y se avisa.
     contenido: r.contenido,
     createdAt: str(r.created_at),
+  }
+}
+
+// ---------------------------------------------------------------------
+// Avisos silenciados
+//
+// No hay `avisoToRow`: la tabla no se escribe con un insert desde el
+// cliente. La mantiene el reloj diario, y la pantalla la toca sólo a
+// través de `silenciar_aviso` y `reactivar_aviso`. Ver
+// `supabase/24_silenciar_avisos.sql`.
+// ---------------------------------------------------------------------
+
+export function mapAviso(r: Row): Aviso {
+  return {
+    asunto: str(r.asunto),
+    titulo: str(r.titulo),
+    gravedad: num(r.gravedad),
+    vistoAt: str(r.visto_at),
+    silenciadoHasta: r.silenciado_hasta ?? null,
+    silenciadoGravedad:
+      r.silenciado_gravedad == null ? null : num(r.silenciado_gravedad),
+    silenciadoAt: r.silenciado_at ?? null,
   }
 }

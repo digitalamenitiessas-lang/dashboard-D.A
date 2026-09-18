@@ -10,6 +10,7 @@ import {
 } from '@/components/ui/popover'
 import { useStore } from '@/lib/store'
 import { buildAlerts, type AlertLevel } from '@/lib/derive'
+import { asuntosSilenciados } from '@/lib/avisos'
 import { cn } from '@/lib/utils'
 
 const dot: Record<AlertLevel, string> = {
@@ -19,8 +20,19 @@ const dot: Record<AlertLevel, string> = {
 }
 
 export function AlertsMenu() {
-  const { projects, notes, tasks, maintenanceCharges, tickets, seguimientos } =
-    useStore()
+  const {
+    projects,
+    notes,
+    tasks,
+    maintenanceCharges,
+    tickets,
+    seguimientos,
+    avisos,
+  } = useStore()
+  // La campana también respeta los silencios. Si no, se calla el push pero el
+  // globito rojo sigue ahí todos los días — que es la misma molestia con otra
+  // cara.
+  const callados = asuntosSilenciados(avisos)
   const alerts = buildAlerts({
     projects,
     notes,
@@ -28,7 +40,7 @@ export function AlertsMenu() {
     maintenanceCharges,
     tickets,
     seguimientos,
-  })
+  }).filter((a) => !callados.has(a.id))
   const criticalCount = alerts.filter((a) => a.level === 'critical').length
 
   return (

@@ -29,6 +29,7 @@ import {
   mapFactura,
   mapFacturaProveedor,
   mapProveedor,
+  mapAviso,
   mapPropuesta,
   mapSeguimiento,
   mapTicket,
@@ -38,6 +39,7 @@ import {
   seguimientoToRow,
   ticketToRow,
 } from './mappers'
+import type { Aviso } from './avisos'
 import type {
   Plantilla,
   Propuesta,
@@ -155,6 +157,21 @@ interface StoreValue {
    * avanzando, así que borrar la 7 no hace que la próxima sea la 7.
    */
   deletePropuesta: (id: string) => Promise<boolean>
+  avisos: Aviso[]
+  /** False mientras no se haya corrido `24_silenciar_avisos.sql`. Ídem. */
+  avisosReady: boolean
+  /**
+   * Calla un aviso recurrente. `dias` en null = sin plazo.
+   *
+   * Nunca es para siempre: la base se lo levanta sola si la situación
+   * empeora respecto de cuando se silenció. Ver `lib/avisos.ts`.
+   */
+  silenciarAviso: (
+    asunto: string,
+    dias: number | null,
+    titulo?: string,
+  ) => Promise<boolean>
+  reactivarAviso: (asunto: string) => Promise<boolean>
   refresh: () => Promise<void>
 
   // Toda mutación contesta si el dato quedó guardado: `true` si salió bien,
@@ -399,6 +416,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [proveedoresReady, setProveedoresReady] = React.useState(true)
   const [propuestas, setPropuestas] = React.useState<PropuestaEmitida[]>([])
   const [propuestasReady, setPropuestasReady] = React.useState(true)
+  const [avisos, setAvisos] = React.useState<Aviso[]>([])
+  const [avisosReady, setAvisosReady] = React.useState(true)
 
   /**
    * Surfaces the failure to the user and keeps it out of the happy path.
@@ -420,7 +439,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg, fa, pv, fp, pr] =
+      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg, fa, pv, fp, pr, av] =
         await Promise.all([
         supabase
           .from('projects')
@@ -489,6 +508,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .from('propuestas')
           .select('*')
           .order('numero', { ascending: false }),
+        supabase.from('avisos').select('*'),
         ])
 
       // Caja is the newest module: if 08_caja.sql hasn't been run yet its
@@ -526,6 +546,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const propuestasMissing = missing(pr.error)
       setPropuestasReady(!propuestasMissing)
 
+      const avisosMissing = missing(av.error)
+      setAvisosReady(!avisosMissing)
+
       const firstError =
         p.error ||
         c.error ||
@@ -540,7 +563,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         (seguimientosMissing ? null : sg.error) ||
         (facturasMissing ? null : fa.error) ||
         (proveedoresMissing ? null : pv.error || fp.error) ||
-        (propuestasMissing ? null : pr.error)
+        (propuestasMissing ? null : pr.error) ||
+        (avisosMissing ? null : av.error)
       if (firstError) throw firstError
 
       setProjects((p.data ?? []).map(mapProject))
@@ -559,6 +583,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       setProveedores((pv.data ?? []).map(mapProveedor))
       setFacturasProveedor((fp.data ?? []).map(mapFacturaProveedor))
       setPropuestas((pr.data ?? []).map(mapPropuesta))
+      setAvisos((av.data ?? []).map(mapAviso))
       setError(null)
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e)
@@ -1466,6 +1491,69 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     [supabase, fail],
   )
 
+  // -------------------------------------------------------------------
+  // Silenciar avisos
+  //
+  // Van por RPC y no por un update directo porque la base es la que sabe
+  // con qué gravedad quedó silenciado cada asunto — ese número es el que
+  // usa después para decidir si la cosa empeoró. Mandarlo desde acá sería
+  // pedirle a la pantalla que repita una cuenta que ya está hecha del otro
+  // lado, y dos cuentas que tienen que dar lo mismo terminan dando
+  // distinto.
+  // -------------------------------------------------------------------
+  const silenciarAviso = React.useCallback(
+    async (asunto: string, dias: number | null, titulo = '') => {
+      try {
+        const { data, error } = await supabase
+          .rpc('silenciar_aviso', {
+            p_asunto: asunto,
+            p_dias: dias,
+            p_titulo: titulo,
+          })
+          .single()
+        if (error) throw error
+        const aviso = mapAviso(data as Record<string, unknown>)
+        setAvisos((prev) => [
+          ...prev.filter((a) => a.asunto !== asunto),
+          aviso,
+        ])
+        return true
+      } catch (e) {
+        fail('silenciar el aviso', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
+  const reactivarAviso = React.useCallback(
+    async (asunto: string) => {
+      try {
+        const { error } = await supabase.rpc('reactivar_aviso', {
+          p_asunto: asunto,
+        })
+        if (error) throw error
+        setAvisos((prev) =>
+          prev.map((a) =>
+            a.asunto === asunto
+              ? {
+                  ...a,
+                  silenciadoAt: null,
+                  silenciadoHasta: null,
+                  silenciadoGravedad: null,
+                }
+              : a,
+          ),
+        )
+        return true
+      } catch (e) {
+        fail('reactivar el aviso', e)
+        return false
+      }
+    },
+    [supabase, fail],
+  )
+
   const addProveedor = React.useCallback(
     async (prov: Omit<Proveedor, 'id' | 'createdAt'>) => {
       try {
@@ -2112,6 +2200,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       propuestasReady,
       emitirPropuesta,
       deletePropuesta,
+      avisos,
+      avisosReady,
+      silenciarAviso,
+      reactivarAviso,
       refresh,
       addProject,
       updateProject,
@@ -2194,6 +2286,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       propuestasReady,
       emitirPropuesta,
       deletePropuesta,
+      avisos,
+      avisosReady,
+      silenciarAviso,
+      reactivarAviso,
       refresh,
       addProject,
       updateProject,
