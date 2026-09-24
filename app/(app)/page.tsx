@@ -17,6 +17,7 @@ import { PageHeader } from '@/components/shared/page-header'
 import { StatCard } from '@/components/shared/stat-card'
 import { StatusChip, TicketGradeChip } from '@/components/shared/status-chip'
 import { SectionCard } from '@/components/dashboard/section-card'
+import { FlujoMensual } from '@/components/dashboard/flujo-mensual'
 import { Progress } from '@/components/ui/progress'
 import { useStore } from '@/lib/store'
 import {
@@ -187,6 +188,8 @@ export default function DashboardPage() {
         <StatCard label="Bloqueados" value={blocked} accent={blocked ? 'red' : 'neutral'} />
         <StatCard label="Total proyectos" value={projects.length} accent="neutral" />
       </div>
+
+      <FlujoMensual />
 
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Latest payments */}
