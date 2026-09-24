@@ -69,7 +69,8 @@ const hint: Record<MovementCategory, string> = {
   'Cambio de moneda': 'Sale de una cuenta y entra en otra moneda.',
   Transferencia: 'Mover plata entre dos cuentas propias.',
   Gasto: 'Plata que sale para afuera: hosting, impuestos, servicios.',
-  Retiro: 'Lo que se llevan ustedes, a la cuenta de Retiros.',
+  Retiro:
+    'Plata que se lleva un socio. El destino es SU cuenta de retiros: ahí queda registrado a quién se le imputa y cuánto lleva retirado.',
   Inversión: 'Compra de cheques o cualquier plata que queda invertida.',
   'Ingreso extra': 'Plata que entra y no viene de un cobro de proyecto.',
   Ajuste:
@@ -119,6 +120,63 @@ function ExpenseFromSelect({
       value={value}
       onValueChange={onValueChange}
       placeholder={options.length === 0 ? 'Sin cuentas' : 'Elegir cuenta'}
+      options={options}
+    />
+  )
+}
+
+/**
+ * «Se le imputa a» para un Retiro: SÓLO las cuentas de tipo Retiros.
+ *
+ * Es la otra mitad de la defensa que empieza en `ExpenseFromSelect`. Un retiro
+ * mandado a una cuenta común devuelve la plata a lo disponible: la pantalla de
+ * Caja separa «Disponible» de «Retirado» mirando el tipo de la cuenta de
+ * destino, así que con el destino equivocado lo que se repartieron los socios
+ * vuelve a figurar como plata de la empresa. No da error y no se nota: el
+ * total simplemente queda inflado.
+ *
+ * Que haya UNA CUENTA POR SOCIO es lo que hace que este campo signifique algo.
+ * Con una sola cuenta de retiros, elegir el destino es un trámite que no dice
+ * nada; con una por socio, el destino ES a quién se le imputa, y el saldo de
+ * cada cuenta es cuánto lleva retirado cada uno sin sumar nada a mano.
+ *
+ * `keepId` sigue la misma regla que en los gastos: la cuenta ya guardada se
+ * ofrece aunque no cumpla, para que editar un movimiento viejo no muestre el
+ * campo vacío mintiendo sobre lo que hay en la base.
+ */
+function RetiroToSelect({
+  id,
+  value,
+  onValueChange,
+  excludeId,
+  keepId,
+}: {
+  id?: string
+  value: string
+  onValueChange: (value: string) => void
+  excludeId?: string
+  keepId?: string
+}) {
+  const { accounts } = useStore()
+
+  const options = accounts
+    .filter((a) => a.id !== excludeId)
+    .filter((a) => a.id === keepId || (!a.archived && a.kind === 'Retiros'))
+    .map((a) => ({ value: a.id, label: `${a.name} · ${a.currency}` }))
+
+  return (
+    <SimpleSelect
+      id={id}
+      value={value}
+      onValueChange={onValueChange}
+      // Sin cuentas de retiro no hay dónde imputar, y el mensaje tiene que
+      // decir qué hacer: el que se topa con esto es el que está cargando un
+      // retiro y no sabe por qué el campo está vacío.
+      placeholder={
+        options.length === 0
+          ? 'Falta crear una cuenta de Retiros por socio'
+          : 'Elegir socio'
+      }
       options={options}
     />
   )
@@ -291,6 +349,7 @@ export function MovementDialog({
 
   const isGasto = category === 'Gasto'
   const isAjuste = category === 'Ajuste'
+  const isRetiro = category === 'Retiro'
   /** Los tres campos de gasto sólo existen si la migración 10 está corrida. */
   const showGasto = isGasto && gastosReady
 
@@ -370,6 +429,19 @@ export function MovementDialog({
       accounts.find((a) => a.id === fromId)?.kind === 'Retiros'
     ) {
       setFromId('')
+    }
+
+    // El espejo: un Retiro sólo puede ir a una cuenta de Retiros. Sin esto,
+    // pasar de Transferencia a Retiro deja el destino anterior cargado abajo
+    // y el campo mostrando el placeholder — y si no se lo toca, el retiro se
+    // guarda contra una cuenta común y la plata vuelve a figurar como
+    // disponible.
+    if (
+      next === 'Retiro' &&
+      toId !== movement?.toAccountId &&
+      accounts.find((a) => a.id === toId)?.kind !== 'Retiros'
+    ) {
+      setToId('')
     }
   }
 
@@ -796,15 +868,31 @@ export function MovementDialog({
               {sides.to ? (
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <Field>
-                    <FieldLabel htmlFor="mov-to">Entra a</FieldLabel>
-                    <AccountSelect
-                      id="mov-to"
-                      value={toId}
-                      onValueChange={setToId}
-                      excludeId={fromId || undefined}
-                      allowNone={isAjuste}
-                      noneLabel="No corresponde"
-                    />
+                    {/* En un retiro este campo no es «dónde cae la plata»
+                        sino «de quién es»: la cuenta de destino es la del
+                        socio. Llamarlo «Entra a» era lo que hacía que se
+                        leyera como un trámite de más. */}
+                    <FieldLabel htmlFor="mov-to">
+                      {isRetiro ? 'Se le imputa a' : 'Entra a'}
+                    </FieldLabel>
+                    {isRetiro ? (
+                      <RetiroToSelect
+                        id="mov-to"
+                        value={toId}
+                        onValueChange={setToId}
+                        excludeId={fromId || undefined}
+                        keepId={movement?.toAccountId ?? undefined}
+                      />
+                    ) : (
+                      <AccountSelect
+                        id="mov-to"
+                        value={toId}
+                        onValueChange={setToId}
+                        excludeId={fromId || undefined}
+                        allowNone={isAjuste}
+                        noneLabel="No corresponde"
+                      />
+                    )}
                   </Field>
                   <Field>
                     <FieldLabel htmlFor="mov-in">
