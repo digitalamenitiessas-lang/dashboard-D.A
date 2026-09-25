@@ -191,7 +191,7 @@ export default function DashboardPage() {
 
       <FlujoMensual />
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         {/* Latest payments */}
         <SectionCard title="Últimos cobros" icon={Wallet} href="/cobros">
           <ul className="flex flex-col gap-3">
@@ -281,7 +281,7 @@ export default function DashboardPage() {
           las otras dos tarjetas suman cuatro en una grilla de tres, así que
           la última caía sola con dos tercios de fila vacíos. Acá proyectos
           se lleva la fila entera y tickets y notas comparten la de abajo. */}
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {/* Recently updated projects */}
         <SectionCard
           title="Proyectos actualizados recientemente"
