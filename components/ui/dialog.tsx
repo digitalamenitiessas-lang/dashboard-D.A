@@ -101,10 +101,25 @@ function DialogContent({
             Los `[&_[data-slot=dialog-footer]]:*` son la red para los
             diálogos que todavía tienen el footer adentro del <form>: lo
             pegan al borde de abajo del scroller, a sangre y con blur para
-            que el contenido no se transparente por atrás. */}
+            que el contenido no se transparente por atrás.
+
+            `overflow-x-hidden` va de la mano del `overflow-y-auto`, y no es
+            decorativo: en CSS, poner `auto` en un eje obliga al otro a `auto`
+            también. Sin esto, cualquier cosa que se pase un pixel convierte
+            el modal en algo que se arrastra de costado. Los otros cinco
+            scrollers del proyecto —el sidebar, el sheet, el menú de alertas,
+            el dropdown y el select— ya lo llevaban; a éste se le habia
+            escapado.
+
+            `[overflow-wrap:anywhere]` es la otra mitad, y sin ella el arreglo
+            sería peor que el problema: esconder el eje X sin dejar que el
+            texto corte no elimina lo que sobra, lo RECORTA. Con `anywhere`
+            una URL o un mail largo bajan de renglón en vez de perderse. Sólo
+            actúa cuando no hay otro lugar donde cortar, así que el texto
+            normal no cambia. */}
         <div
           data-slot="dialog-body"
-          className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-y-auto overscroll-contain p-4 [&>*]:min-w-0 [&_[data-slot=dialog-footer]]:sticky [&_[data-slot=dialog-footer]]:-bottom-4 [&_[data-slot=dialog-footer]]:z-10 [&_[data-slot=dialog-footer]]:-mx-4 [&_[data-slot=dialog-footer]]:-mb-4 [&_[data-slot=dialog-footer]]:supports-backdrop-filter:backdrop-blur-md"
+          className="grid min-h-0 grid-cols-[minmax(0,1fr)] gap-4 overflow-x-hidden overflow-y-auto overscroll-contain [overflow-wrap:anywhere] p-4 [&>*]:min-w-0 [&_[data-slot=dialog-footer]]:sticky [&_[data-slot=dialog-footer]]:-bottom-4 [&_[data-slot=dialog-footer]]:z-10 [&_[data-slot=dialog-footer]]:-mx-4 [&_[data-slot=dialog-footer]]:-mb-4 [&_[data-slot=dialog-footer]]:supports-backdrop-filter:backdrop-blur-md"
         >
           {cuerpo}
         </div>
