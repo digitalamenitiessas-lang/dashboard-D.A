@@ -53,7 +53,7 @@ const asAmount = (n: number) => String(round(n, 2))
  * puede ir para arriba (entra a) o para abajo (sale de). Hasta hace poco
  * sólo tenía el lado de entrada, así que para bajar un saldo había que
  * cargar un 'Gasto' — y eso mete en el reporte de gastos plata que nunca se
- * gastó. Es la ÚNICA categoría con los dos lados opcionales: ver `sidesOk`.
+ * gastó. Es la ÚNICA categoría con los dos lados opcionales: ver `faltan`.
  */
 const shape: Record<MovementCategory, { from: boolean; to: boolean }> = {
   'Cambio de moneda': { from: true, to: true },
@@ -350,6 +350,14 @@ export function MovementDialog({
   const isGasto = category === 'Gasto'
   const isAjuste = category === 'Ajuste'
   const isRetiro = category === 'Retiro'
+  /**
+   * Si no hay ninguna, un Retiro no se puede guardar y no es culpa de quien
+   * lo está cargando: falta crear la cuenta del socio. El cartel de abajo lo
+   * dice con todas las letras en vez de dejar el botón apagado y mudo.
+   */
+  const hayCuentasDeRetiro = accounts.some(
+    (a) => !a.archived && a.kind === 'Retiros',
+  )
   /** Los tres campos de gasto sólo existen si la migración 10 está corrida. */
   const showGasto = isGasto && gastosReady
 
@@ -518,24 +526,57 @@ export function MovementDialog({
   const toEmpty = !toId && !(income > 0)
 
   /**
-   * El Ajuste, y sólo el Ajuste, se conforma con un lado. Las otras seis
-   * categorías siguen exigiendo los dos lados que declara `shape`: una
-   * Transferencia guardada a medio cargar haría desaparecer plata entre dos
-   * cuentas propias, que es exactamente el error que Caja existe para no
-   * cometer.
+   * Qué le falta al formulario, en criollo.
+   *
+   * Un botón apagado sin explicación es un callejón sin salida: el que lo mira
+   * ve que no anda y no tiene forma de saber cuál de los diez campos es. Pasó
+   * de verdad —«no me deja marcar el egreso»— y del otro lado no había ningún
+   * error, sólo un campo obligatorio que no se veía sin scrollear.
+   *
+   * `valid` SALE de esta lista, no se calcula aparte. Si fueran dos cuentas
+   * separadas, el día que alguien agregue una regla y se olvide de sumarla
+   * acá, el botón se volvería a apagar sin motivo visible. Derivándolo, eso no
+   * puede pasar: una condición que no está en la lista no apaga nada.
    */
-  const sidesOk = isAjuste
-    ? (fromWhole || toWhole) && (fromWhole || fromEmpty) && (toWhole || toEmpty)
-    : (!sides.from || fromWhole) && (!sides.to || toWhole)
+  const faltan: string[] = []
+  if (!movedOn) faltan.push('la fecha')
+
+  // El Ajuste, y sólo el Ajuste, se conforma con un lado. Las otras seis
+  // categorías exigen los dos lados que declara `shape`: una Transferencia
+  // guardada a medio cargar haría desaparecer plata entre dos cuentas
+  // propias, que es exactamente el error que Caja existe para no cometer.
+  if (isAjuste) {
+    if (!fromWhole && !toWhole) faltan.push('un lado: de dónde sale o a dónde entra')
+    if (!fromWhole && !fromEmpty) faltan.push('completar el lado de arriba, o vaciarlo')
+    if (!toWhole && !toEmpty) faltan.push('completar el lado de abajo, o vaciarlo')
+  } else {
+    if (sides.from && !fromId) faltan.push('de qué cuenta sale')
+    if (sides.from && fromId && !(out > 0)) faltan.push('el monto que sale')
+    if (sides.to && !toId) {
+      // En un retiro este campo es el socio, y si no hay ninguna cuenta de
+      // retiros creada el formulario es imposible de completar. Decir «falta
+      // el destino» ahí no ayuda: hay que decir que falta crear la cuenta.
+      faltan.push(
+        isRetiro
+          ? hayCuentasDeRetiro
+            ? 'a qué socio se le imputa'
+            : 'crear una cuenta de Retiros por socio, desde Caja'
+          : 'a qué cuenta entra',
+      )
+    }
+    if (sides.to && toId && !(income > 0)) faltan.push('el monto que entra')
+  }
+
+  if (fromId && fromId === toId) faltan.push('dos cuentas distintas')
 
   // Rubro obligatorio en los gastos nuevos. En los viejos no: nacieron sin la
   // columna y se clasifican desde el cartel de /gastos, no a la fuerza acá.
   // Y un pago imputado a un plan siempre dice qué período salda — lo pide la
   // base, así que mejor frenarlo antes que traducir el error después.
-  const gastoOk =
-    !showGasto || ((editing || kind !== '') && (!planId || period !== ''))
+  if (showGasto && !editing && kind === '') faltan.push('el rubro del gasto')
+  if (showGasto && planId && period === '') faltan.push('qué período salda')
 
-  const valid = Boolean(movedOn) && sidesOk && fromId !== toId && gastoOk
+  const valid = faltan.length === 0
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -981,6 +1022,14 @@ export function MovementDialog({
               >
                 Eliminar
               </Button>
+            ) : null}
+            {/* Pegado al botón apagado, que es donde se mira cuando algo no
+                anda. Arriba de los campos no serviría: el formulario es largo
+                y para cuando llegás al pie ya no lo ves. */}
+            {!valid && faltan.length > 0 ? (
+              <p className="w-full text-xs text-amber-300 text-pretty sm:flex-1 sm:text-left">
+                Falta {faltan.join(', ')}.
+              </p>
             ) : null}
             <div className="flex w-full items-center gap-2 sm:w-auto">
               <Button
