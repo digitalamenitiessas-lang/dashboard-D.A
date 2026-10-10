@@ -174,3 +174,62 @@ export function resumenFacturacion(
     facturas: propias,
   }
 }
+
+// =====================================================================
+// El número que sigue
+// =====================================================================
+
+/** `0001-00008` → punto de venta y correlativo, con el ancho que tengan. */
+const PARTES = /^(\d+)\s*-\s*(\d+)$/
+
+/**
+ * Propone el número de la próxima factura: el último más uno.
+ *
+ * NO IMPONE UN FORMATO. Lee el que ya vienen usando —cuántos dígitos tiene el
+ * punto de venta, cuántos el correlativo— y lo continúa. Si mañana pasan de
+ * `0001-00008` a `0002-00001`, la numeración sigue por el punto de venta
+ * nuevo sin que haya que tocar nada. Imponer `0001-00000001` estilo AFIP
+ * rompería la serie que ya tienen empezada.
+ *
+ * Devuelve `null` cuando no hay de dónde deducirlo: sin facturas todavía, o
+ * con números que no siguen el patrón. Ahí es mejor que el campo quede vacío y
+ * lo escriban una vez, y no inventar un `0001-00001` que puede chocar con la
+ * serie real — el número es único en la base y el choque se descubre recién al
+ * guardar.
+ *
+ * El punto de venta que continúa es el de la factura MÁS RECIENTE, no el más
+ * usado: si acaban de cambiar de punto de venta, la próxima va por el nuevo.
+ */
+export function siguienteNumero(facturas: Factura[]): string | null {
+  const parseadas = facturas
+    .map((f) => {
+      const m = PARTES.exec(f.numero.trim())
+      if (!m) return null
+      return {
+        punto: m[1],
+        correlativo: Number(m[2]),
+        ancho: m[2].length,
+        // `emitidaOn` y no `createdAt`: si cargan una factura vieja que se
+        // había traspapelado, no por eso cambia la serie en curso.
+        cuando: f.emitidaOn,
+      }
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+
+  if (parseadas.length === 0) return null
+
+  const ultima = parseadas.reduce((a, b) =>
+    b.cuando > a.cuando || (b.cuando === a.cuando && b.correlativo > a.correlativo)
+      ? b
+      : a,
+  )
+
+  // Dentro de ese punto de venta se toma el correlativo más alto, no el de la
+  // última cargada: si alguien cargó una atrasada al final, el siguiente
+  // número igual tiene que ser uno más que el mayor, o se repite.
+  const delPunto = parseadas.filter((x) => x.punto === ultima.punto)
+  const mayor = Math.max(...delPunto.map((x) => x.correlativo))
+  const ancho = Math.max(...delPunto.map((x) => x.ancho))
+
+  return `${ultima.punto}-${String(mayor + 1).padStart(ancho, '0')}`
+}

@@ -23,6 +23,7 @@ export function SimpleSelect({
   className,
   id,
   size = 'default',
+  disabled = false,
 }: {
   value: string
   onValueChange: (value: string) => void
@@ -31,9 +32,19 @@ export function SimpleSelect({
   className?: string
   id?: string
   size?: 'sm' | 'default'
+  /**
+   * Para los campos que otra cosa ya decidió —la moneda de una factura la
+   * manda su proyecto— y que la base además valida. Dejarlos elegibles es
+   * ofrecer algo que después se rechaza.
+   */
+  disabled?: boolean
 }) {
   return (
-    <Select value={value} onValueChange={(v) => onValueChange(v as string)}>
+    <Select
+      value={value}
+      onValueChange={(v) => onValueChange(v as string)}
+      disabled={disabled}
+    >
       <SelectTrigger id={id} size={size} className={cn('w-full', className)}>
         <SelectValue placeholder={placeholder}>
           {(v: string | null) =>

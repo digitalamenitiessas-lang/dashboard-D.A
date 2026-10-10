@@ -20,7 +20,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { MoneyInput } from '@/components/shared/money-input'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { useStore } from '@/lib/store'
-import { estadoFactura, imputadoA } from '@/lib/facturas'
+import { estadoFactura, imputadoA, siguienteNumero } from '@/lib/facturas'
 import { formatMoney, todayIso } from '@/lib/format'
 import type { Client, Currency, Factura } from '@/lib/types'
 
@@ -59,6 +59,7 @@ export function FacturaDialog({
     clients,
     projects,
     payments,
+    facturas,
     facturasReady,
     addFactura,
     updateFactura,
@@ -79,7 +80,33 @@ export function FacturaDialog({
     factura?.clienteId ?? cliente?.id ?? '',
   )
   const [projectId, setProjectId] = React.useState(factura?.projectId ?? '')
-  const [numero, setNumero] = React.useState(factura?.numero ?? '')
+  /**
+   * En una factura nueva el número viene propuesto: el último más uno.
+   *
+   * Se calcula en el inicializador y no en un efecto para que el campo ya
+   * aparezca lleno la primera vez que se pinta — con un efecto se vería vacío
+   * un instante, que es justo cuando alguien empieza a tipear encima.
+   *
+   * Queda editable. Es una propuesta, no un candado: hay que poder corregirla
+   * cuando cambia el punto de venta o cuando se saltea un número.
+   */
+  const [numero, setNumero] = React.useState(
+    () => factura?.numero ?? siguienteNumero(facturas) ?? '',
+  )
+
+  /**
+   * Y se vuelve a proponer cada vez que el diálogo se abre para una factura
+   * nueva. Sin esto, cargar dos seguidas sin recargar la página ofrecía el
+   * mismo número las dos veces: el estado sobrevive al cierre, y la segunda
+   * chocaba contra el índice único recién al guardar.
+   */
+  React.useEffect(() => {
+    if (visible && !factura) setNumero(siguienteNumero(facturas) ?? '')
+    // `facturas` a propósito fuera de las dependencias: si entrara, agregar la
+    // factura actual al store dispararía este efecto y pisaría lo que el
+    // usuario está escribiendo.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, factura])
   const [concepto, setConcepto] = React.useState(factura?.concepto ?? '')
   const [emitidaOn, setEmitidaOn] = React.useState(
     factura?.emitidaOn ?? todayIso(),
@@ -258,15 +285,24 @@ export function FacturaDialog({
               </Field>
               <Field>
                 <FieldLabel htmlFor="fac-moneda">Moneda</FieldLabel>
+                {/* Con proyecto el campo se bloquea de verdad. Antes decía
+                    que se bloqueaba y no lo hacía: se podía elegir ARS en un
+                    proyecto cotizado en USD, el cartel de arriba seguía
+                    diciendo «va en USD», y la base lo rechazaba recién al
+                    tocar Registrar — con un mensaje que aparecía después de
+                    haber llenado todo el formulario. */}
                 <SimpleSelect
                   id="fac-moneda"
                   value={moneda}
                   onValueChange={(v) => setMoneda(v as Currency)}
                   options={toOptions(['USD', 'ARS', 'EUR'] as const)}
+                  disabled={!!proyecto}
                 />
                 {proyecto ? (
                   <p className="text-xs text-muted-foreground">
-                    La manda el proyecto.
+                    La manda el proyecto: {proyecto.name} está cotizado en{' '}
+                    {proyecto.currency}. Para facturar en otra moneda, dejá la
+                    factura sin proyecto.
                   </p>
                 ) : null}
               </Field>
