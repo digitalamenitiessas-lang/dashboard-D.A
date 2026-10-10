@@ -101,13 +101,24 @@ export function isEmptyMoney(totals: MoneyByCurrency): boolean {
  *
  * Once two currencies sit side by side the symbol alone is not enough — USD
  * and ARS are both "$" — so the whole line switches to currency codes.
+ *
+ * `siempreConCodigo` fuerza los códigos aunque haya una sola moneda. Es para
+ * cuando el número vive AL LADO de otro que sí tiene varias: esta función mira
+ * un total por vez y no puede saber que su vecino dice «USD 300 · ARS 850.000»,
+ * así que un «$411» solo queda ambiguo justo donde más importa. Pasó en el card
+ * de flujo mensual: entraba en dos monedas y salía en una, y no había forma de
+ * saber si esos 411 eran dólares o pesos.
  */
-export function formatMoneyByCurrency(totals: MoneyByCurrency): string {
+export function formatMoneyByCurrency(
+  totals: MoneyByCurrency,
+  { siempreConCodigo = false }: { siempreConCodigo?: boolean } = {},
+): string {
   const all = entries(totals)
   if (all.length === 0) return '—'
   const nonZero = all.filter(([, amount]) => Math.round(amount) !== 0)
   const shown = nonZero.length > 0 ? nonZero : all.slice(0, 1)
-  const render = shown.length > 1 ? formatMoneyWithCode : formatMoney
+  const render =
+    siempreConCodigo || shown.length > 1 ? formatMoneyWithCode : formatMoney
   return shown
     .map(([currency, amount]) => render(amount, currency))
     .join(' · ')

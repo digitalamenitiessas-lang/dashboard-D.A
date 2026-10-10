@@ -106,8 +106,15 @@ export function FacturasProyecto({ project }: { project: Project }) {
                     {f.moneda !== project.currency
                       ? ` · salda ${formatMoneyWithCode(loQueFactura(f, project.currency), project.currency)}`
                       : ''}
+                    {/* Con el código cuando la factura va en otra moneda que
+                        el proyecto: en una ficha en dólares, un «falta
+                        $ 200.000» se lee como dólares. */}
                     {estado !== 'Cancelada'
-                      ? ` · falta ${formatMoney(saldoFactura(f, payments), f.moneda)}`
+                      ? ` · falta ${
+                          f.moneda === project.currency
+                            ? formatMoney(saldoFactura(f, payments), f.moneda)
+                            : formatMoneyWithCode(saldoFactura(f, payments), f.moneda)
+                        }`
                       : ''}
                   </p>
                 </div>

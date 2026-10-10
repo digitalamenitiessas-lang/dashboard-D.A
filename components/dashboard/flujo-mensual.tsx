@@ -67,14 +67,14 @@ export function FlujoMensual() {
         <Cifra
           etiqueta="Entra"
           hint="Mantenimientos activos"
-          valor={isEmptyMoney(entra) ? '—' : formatMoneyByCurrency(entra)}
+          valor={isEmptyMoney(entra) ? '—' : formatMoneyByCurrency(entra, { siempreConCodigo: true })}
           tono="text-neon-green"
         />
         {sale ? (
           <Cifra
             etiqueta="Sale"
             hint="Gastos fijos comprometidos"
-            valor={isEmptyMoney(sale) ? '—' : formatMoneyByCurrency(sale)}
+            valor={isEmptyMoney(sale) ? '—' : formatMoneyByCurrency(sale, { siempreConCodigo: true })}
             tono="text-red-300"
           />
         ) : null}
@@ -82,7 +82,7 @@ export function FlujoMensual() {
           <Cifra
             etiqueta="Neto"
             hint="Por mes, antes de proyectos"
-            valor={isEmptyMoney(neto) ? '—' : formatMoneyByCurrency(neto)}
+            valor={isEmptyMoney(neto) ? '—' : formatMoneyByCurrency(neto, { siempreConCodigo: true })}
             tono=""
           />
         ) : null}
