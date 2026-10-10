@@ -620,14 +620,30 @@ export interface Factura {
   emitidaOn: string // ISO date
   /** Null = sin plazo pactado. */
   venceOn: string | null
+  /** Lo que dice el papel que recibe el cliente, en `moneda`. */
   importe: number
   /**
-   * Propia, porque sin proyecto no hay de dónde heredarla. Con proyecto, la
-   * base exige que sea la del proyecto: si no, «facturado» y «cotizado» del
-   * mismo proyecto quedarían en monedas distintas y restarlos —que es lo que
-   * hace «sin facturar»— sería justo lo que esta app no hace en ningún lado.
+   * La moneda en la que se le factura al cliente, que NO tiene por qué ser la
+   * del proyecto: se cotiza en dólares y se factura en pesos, que es el caso
+   * normal acá. Cuando difieren, `aplicado` dice cuánto salda.
    */
   moneda: Currency
+  /**
+   * Cuánto de lo cotizado salda esta factura, en la moneda del PROYECTO.
+   *
+   * Es el mismo par que ya tienen los cobros —`amount` y `appliedAmount`— y
+   * existe por el mismo motivo: «sin facturar» es `cotizado − facturado`, y
+   * esa resta necesita los dos números en la misma moneda. `importe` está en
+   * la del cliente; éste, en la del proyecto.
+   *
+   * Null cuando no hace falta: sin proyecto, o cuando la factura ya va en la
+   * moneda del proyecto. La base lo exige en el único caso en que importa
+   * (`supabase/25_facturas_en_otra_moneda.sql`), y lo rechaza en los otros dos
+   * para que no quede un número repetido que algún día discrepe.
+   *
+   * La cotización no se guarda: es `importe / aplicado`.
+   */
+  aplicado: number | null
   notas: string
   createdAt: string
 }

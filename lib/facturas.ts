@@ -32,6 +32,25 @@ export function loQueSalda(pago: Payment, moneda: Currency): number {
   return pago.appliedAmount ?? 0
 }
 
+/**
+ * Cuánto salda una factura de lo cotizado, medido en `moneda`.
+ *
+ * Hermana exacta de `loQueSalda()`, un piso más arriba: aquélla concilia un
+ * cobro contra una factura, ésta concilia una factura contra su proyecto. Se
+ * factura en pesos lo que se cotizó en dólares —el caso normal acá— y sin
+ * esto «facturado» sumaría pesos contra un cotizado en dólares.
+ *
+ * Sin equivalente cargado no salda nada, igual que un cobro sin su
+ * `appliedAmount`: no hay cotización que inventar. En la práctica no debería
+ * pasar, porque la base lo exige cuando las monedas difieren
+ * (`supabase/25_facturas_en_otra_moneda.sql`); el `?? 0` es para las filas que
+ * pudieran venir de antes de esa migración.
+ */
+export function loQueFactura(factura: Factura, moneda: Currency): number {
+  if (factura.moneda === moneda) return factura.importe
+  return factura.aplicado ?? 0
+}
+
 /** Lo imputado a una factura, en la moneda de la factura. */
 export function imputadoA(factura: Factura, payments: Payment[]): number {
   return payments
@@ -56,9 +75,30 @@ export function estadoFactura(
   return 'Parcial'
 }
 
-/** Lo que falta cobrar de esta factura. Nunca negativo. */
+/** Lo que falta cobrar de esta factura, en la moneda de la factura. Nunca negativo. */
 export function saldoFactura(factura: Factura, payments: Payment[]): number {
   return Math.max(0, factura.importe - imputadoA(factura, payments))
+}
+
+/**
+ * Lo que falta cobrar, pero medido en `moneda`.
+ *
+ * Para los totales de un proyecto: una factura en pesos con la mitad cobrada
+ * deja media deuda, y en la moneda del proyecto esa mitad vale la mitad de lo
+ * que la factura dijo que saldaba. Se prorratea con la cotización que quedó
+ * congelada en la propia factura —`aplicado / importe`— y no con la de hoy: lo
+ * que esa factura salda se acordó el día que se emitió, y moverlo porque el
+ * dólar cambió haría que «sin facturar» se mueva solo.
+ */
+export function saldoFacturaEn(
+  factura: Factura,
+  payments: Payment[],
+  moneda: Currency,
+): number {
+  const saldo = saldoFactura(factura, payments)
+  if (factura.moneda === moneda || saldo === 0) return saldo
+  if (!factura.importe) return 0
+  return (loQueFactura(factura, moneda) * saldo) / factura.importe
 }
 
 /**
@@ -165,11 +205,23 @@ export function resumenFacturacion(
     .filter((f) => f.projectId === project.id)
     .sort((a, b) => b.emitidaOn.localeCompare(a.emitidaOn))
 
-  const facturado = propias.reduce((s, f) => s + f.importe, 0)
+  // En la moneda del PROYECTO, no en la de cada factura: éste es el número
+  // que después se resta de lo cotizado, y esa resta pide las dos cosas en la
+  // misma moneda. Una factura en pesos de un proyecto en dólares aporta lo que
+  // dice que salda, no sus pesos.
+  const facturado = propias.reduce(
+    (s, f) => s + loQueFactura(f, project.currency),
+    0,
+  )
 
   return {
     facturado,
-    pendienteDeCobro: propias.reduce((s, f) => s + saldoFactura(f, payments), 0),
+    // También en la moneda del proyecto, por el mismo motivo que `facturado`:
+    // es un total, y un total que mezcla monedas no dice nada.
+    pendienteDeCobro: propias.reduce(
+      (s, f) => s + saldoFacturaEn(f, payments, project.currency),
+      0,
+    ),
     sinFacturar: Math.max(0, project.quotedAmount - facturado),
     facturas: propias,
   }

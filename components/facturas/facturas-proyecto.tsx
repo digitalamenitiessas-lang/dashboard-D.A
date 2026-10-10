@@ -5,7 +5,12 @@ import { Receipt } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { DetailCard } from '@/components/proyectos/detail-parts'
 import { useStore } from '@/lib/store'
-import { estadoFactura, resumenFacturacion, saldoFactura } from '@/lib/facturas'
+import {
+  estadoFactura,
+  loQueFactura,
+  resumenFacturacion,
+  saldoFactura,
+} from '@/lib/facturas'
 import { formatDate, formatMoney, formatMoneyWithCode } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import type { FacturaEstado, Project } from '@/lib/types'
@@ -94,6 +99,13 @@ export function FacturasProyecto({ project }: { project: Project }) {
                   <p className="truncate text-sm">{f.concepto || f.numero}</p>
                   <p className="truncate text-xs text-muted-foreground tabular-nums">
                     {f.numero} · {formatDate(f.emitidaOn)}
+                    {/* En otra moneda que el proyecto hay que decir las dos
+                        caras. Si no, una lista de importes en pesos abajo de
+                        un total en dólares no se entiende: parece que las
+                        cuentas no cierran. */}
+                    {f.moneda !== project.currency
+                      ? ` · salda ${formatMoneyWithCode(loQueFactura(f, project.currency), project.currency)}`
+                      : ''}
                     {estado !== 'Cancelada'
                       ? ` · falta ${formatMoney(saldoFactura(f, payments), f.moneda)}`
                       : ''}
@@ -107,7 +119,12 @@ export function FacturasProyecto({ project }: { project: Project }) {
                     {estado}
                   </Badge>
                   <span className="text-sm font-semibold tabular-nums">
-                    {formatMoney(f.importe, f.moneda)}
+                    {/* Con el código y no con el símbolo cuando difiere de la
+                        del proyecto: USD y ARS comparten el «$», y acá
+                        conviven las dos. */}
+                    {f.moneda === project.currency
+                      ? formatMoney(f.importe, f.moneda)
+                      : formatMoneyWithCode(f.importe, f.moneda)}
                   </span>
                 </div>
               </li>

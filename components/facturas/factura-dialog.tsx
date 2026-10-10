@@ -21,6 +21,8 @@ import { MoneyInput } from '@/components/shared/money-input'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { useStore } from '@/lib/store'
 import { estadoFactura, imputadoA, siguienteNumero } from '@/lib/facturas'
+import { CotizacionHint } from '@/components/shared/cotizacion-hint'
+import { sugerenciaParaCobro, useCotizacion } from '@/lib/cotizacion'
 import { formatMoney, todayIso } from '@/lib/format'
 import type { Client, Currency, Factura } from '@/lib/types'
 
@@ -116,6 +118,15 @@ export function FacturaDialog({
     factura ? String(factura.importe) : '',
   )
   const [moneda, setMoneda] = React.useState<Currency>(factura?.moneda ?? 'USD')
+  /** Cuánto salda del proyecto, cuando se factura en otra moneda. */
+  const [aplicado, setAplicado] = React.useState(
+    factura?.aplicado != null ? String(factura.aplicado) : '',
+  )
+  // La cotización no se guarda: se muestra y se usa para calcular, pero lo
+  // que queda en la base son los dos montos. Al editar se reconstruye.
+  const [rate, setRate] = React.useState(
+    factura?.aplicado ? String(factura.importe / factura.aplicado) : '',
+  )
   const [notas, setNotas] = React.useState(factura?.notas ?? '')
   const [confirmandoBorrado, setConfirmandoBorrado] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
@@ -130,14 +141,58 @@ export function FacturaDialog({
   const proyecto = proyectosDelCliente.find((p) => p.id === projectId)
 
   /**
-   * Con proyecto, la moneda la manda el proyecto y el campo se bloquea: la
-   * base lo exige con un trigger, porque «facturado» y «cotizado» del mismo
-   * proyecto en monedas distintas harían que «sin facturar» reste peras con
-   * manzanas.
+   * Elegir un proyecto PROPONE su moneda, pero ya no la impone: se cotiza en
+   * dólares y se factura en pesos, que acá es el caso normal. Cuando el
+   * usuario la cambia a mano aparece el bloque de conversión de abajo.
+   *
+   * Sólo al elegir el proyecto, no en cada render: con un efecto que mirara
+   * `moneda` volvería a pisarla apenas se la cambia.
    */
   React.useEffect(() => {
     if (proyecto) setMoneda(proyecto.currency)
   }, [proyecto])
+
+  /** ¿Se le factura al cliente en otra moneda que la cotizada? */
+  const otraMoneda = !!proyecto && moneda !== proyecto.currency
+
+  // El mismo lado del mostrador que un cobro: le estamos poniendo precio en
+  // pesos a una deuda en dólares, así que corresponde la de venta — que es la
+  // que devuelve `sugerenciaParaCobro`.
+  const cotizacion = useCotizacion()
+  const sugerencia = otraMoneda
+    ? sugerenciaParaCobro(proyecto.currency, moneda, cotizacion)
+    : null
+
+  /**
+   * Importe, cotización y equivalente son tres vistas de la misma operación:
+   * se completan dos y el tercero sale solo. Es el patrón que ya usan el
+   * diálogo de cobros y el de movimientos de caja.
+   */
+  const dec = (n: number) => (Math.round(n * 100) / 100).toString()
+
+  function cambiarImporte(v: string) {
+    setImporte(v)
+    if (!otraMoneda) return
+    const facturado = Number(v)
+    if (facturado <= 0) return
+    if (Number(rate) > 0) setAplicado(dec(facturado / Number(rate)))
+    else if (Number(aplicado) > 0) setRate(dec(facturado / Number(aplicado)))
+  }
+
+  function cambiarCotizacion(v: string) {
+    setRate(v)
+    const r = Number(v)
+    const facturado = Number(importe)
+    if (r > 0 && facturado > 0) setAplicado(dec(facturado / r))
+  }
+
+  function cambiarEquivalente(v: string) {
+    setAplicado(v)
+    if (!otraMoneda) return
+    const eq = Number(v)
+    const facturado = Number(importe)
+    if (eq > 0 && facturado > 0) setRate(dec(facturado / eq))
+  }
 
   // Cambiar de cliente invalida un proyecto elegido del anterior.
   React.useEffect(() => {
@@ -152,6 +207,9 @@ export function FacturaDialog({
     numero.trim() !== '' &&
     concepto.trim() !== '' &&
     Number(importe) > 0 &&
+    // Con monedas distintas la base exige el equivalente. Frenarlo acá es
+    // mejor que traducir el error del trigger después de haber guardado.
+    (!otraMoneda || Number(aplicado) > 0) &&
     emitidaOn !== '' &&
     !fechaAlReves
 
@@ -170,6 +228,10 @@ export function FacturaDialog({
       venceOn: venceOn || null,
       importe: Number(importe),
       moneda,
+      // Null salvo que de verdad haga falta: la base rechaza un equivalente
+      // redundante, justamente para que no quede un número repetido que algún
+      // día discrepe del original.
+      aplicado: otraMoneda ? Number(aplicado) : null,
       notas: notas.trim(),
     }
     const ok = factura
@@ -285,24 +347,15 @@ export function FacturaDialog({
               </Field>
               <Field>
                 <FieldLabel htmlFor="fac-moneda">Moneda</FieldLabel>
-                {/* Con proyecto el campo se bloquea de verdad. Antes decía
-                    que se bloqueaba y no lo hacía: se podía elegir ARS en un
-                    proyecto cotizado en USD, el cartel de arriba seguía
-                    diciendo «va en USD», y la base lo rechazaba recién al
-                    tocar Registrar — con un mensaje que aparecía después de
-                    haber llenado todo el formulario. */}
                 <SimpleSelect
                   id="fac-moneda"
                   value={moneda}
                   onValueChange={(v) => setMoneda(v as Currency)}
                   options={toOptions(['USD', 'ARS', 'EUR'] as const)}
-                  disabled={!!proyecto}
                 />
-                {proyecto ? (
+                {proyecto && !otraMoneda ? (
                   <p className="text-xs text-muted-foreground">
-                    La manda el proyecto: {proyecto.name} está cotizado en{' '}
-                    {proyecto.currency}. Para facturar en otra moneda, dejá la
-                    factura sin proyecto.
+                    La propone el proyecto. Se puede facturar en otra.
                   </p>
                 ) : null}
               </Field>
@@ -316,7 +369,7 @@ export function FacturaDialog({
                 <MoneyInput
                   id="fac-importe"
                   value={importe}
-                  onValueChange={setImporte}
+                  onValueChange={cambiarImporte}
                   placeholder="0"
                 />
                 {editando && yaImputado > 0 ? (
@@ -344,6 +397,59 @@ export function FacturaDialog({
                 />
               </Field>
             </div>
+
+            {/* Sólo cuando se le factura al cliente en otra moneda que la
+                cotizada: se cotizó en dólares y la factura va en pesos. Dos
+                montos y no una cotización guardada — la cotización es la
+                división de los dos, y así queda registrado lo que de verdad
+                se acordó ese día, no un tipo de cambio suelto que después
+                nadie sabe de dónde salió. */}
+            {otraMoneda && proyecto ? (
+              <div className="flex flex-col gap-3 rounded-xl border border-neon-blue/25 bg-neon-blue/[0.06] p-3">
+                <p className="text-xs leading-relaxed text-muted-foreground text-pretty">
+                  {proyecto.name} está cotizado en{' '}
+                  <span className="font-medium text-foreground">
+                    {proyecto.currency}
+                  </span>{' '}
+                  y esta factura va en{' '}
+                  <span className="font-medium text-foreground">{moneda}</span>.
+                  Completá uno de los dos y el otro se calcula solo.
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="fac-rate">
+                      Cotización ({moneda} por {proyecto.currency})
+                    </FieldLabel>
+                    <MoneyInput
+                      id="fac-rate"
+                      value={rate}
+                      onValueChange={cambiarCotizacion}
+                      placeholder="0"
+                      decimals={6}
+                    />
+                    <CotizacionHint
+                      sugerencia={sugerencia}
+                      yaUsada={!!sugerencia && Number(rate) === sugerencia.valor}
+                      onUsar={(v) => cambiarCotizacion(String(v))}
+                    />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="fac-aplicado">
+                      Salda ({proyecto.currency})
+                    </FieldLabel>
+                    <MoneyInput
+                      id="fac-aplicado"
+                      value={aplicado}
+                      onValueChange={cambiarEquivalente}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Es lo que descuenta de lo cotizado del proyecto.
+                    </p>
+                  </Field>
+                </div>
+              </div>
+            ) : null}
 
             <Field>
               <FieldLabel htmlFor="fac-vence">Vence (opcional)</FieldLabel>

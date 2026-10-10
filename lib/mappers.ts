@@ -321,6 +321,7 @@ export function mapFactura(r: Row): Factura {
     emitidaOn: r.emitida_on,
     venceOn: r.vence_on ?? null,
     importe: num(r.importe),
+    aplicado: r.aplicado == null ? null : num(r.aplicado),
     notas: str(r.notas),
     createdAt: r.created_at,
   }
@@ -336,6 +337,7 @@ export function facturaToRow(f: Partial<Factura>): Row {
     emitidaOn: 'emitida_on',
     venceOn: 'vence_on',
     importe: 'importe',
+    aplicado: 'aplicado',
     notas: 'notas',
   })
 }
