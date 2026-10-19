@@ -29,7 +29,13 @@ import {
   quitar,
   type ItemEditable,
 } from '@/lib/propuesta/editar'
-import type { EtapaPropuesta } from '@/lib/propuesta/schema'
+import { SimpleSelect } from '@/components/shared/simple-select'
+import {
+  ETIQUETA_RECURRENCIA,
+  RECURRENCIAS,
+  type EtapaPropuesta,
+  type Recurrencia,
+} from '@/lib/propuesta/schema'
 
 function BotonQuitar({ onClick, que }: { onClick: () => void; que: string }) {
   return (
@@ -134,14 +140,29 @@ export function ListaItems({
             <BotonQuitar que="el ítem" onClick={() => onChange(quitar(items, i))} />
           </div>
 
-          <Input
-            value={item.detalle}
-            placeholder="Detalle (opcional)"
-            className="text-sm"
-            onChange={(e) =>
-              onChange(cambiar(items, i, { detalle: e.target.value }))
-            }
-          />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_10rem]">
+            <Input
+              value={item.detalle}
+              placeholder="Detalle (opcional)"
+              className="text-sm"
+              onChange={(e) =>
+                onChange(cambiar(items, i, { detalle: e.target.value }))
+              }
+            />
+            {/* Al lado del detalle y no abajo de los montos: es parte de QUÉ
+                se vende, no de cuánto. Un mantenimiento mensual mal marcado
+                como único infla el total con plata que no entra de una. */}
+            <SimpleSelect
+              value={item.recurrencia}
+              onValueChange={(v) =>
+                onChange(cambiar(items, i, { recurrencia: v as Recurrencia }))
+              }
+              options={RECURRENCIAS.map((r) => ({
+                value: r,
+                label: ETIQUETA_RECURRENCIA[r],
+              }))}
+            />
+          </div>
 
           {/* En el teléfono las tres van una debajo de otra; recién a partir
               de 640px entran en fila. */}

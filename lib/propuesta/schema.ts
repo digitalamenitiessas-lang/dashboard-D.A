@@ -34,6 +34,36 @@ import { z } from 'zod'
 export const PLANTILLAS = ['corta', 'larga'] as const
 export type Plantilla = (typeof PLANTILLAS)[number]
 
+/**
+ * Cada cuánto se cobra un ítem.
+ *
+ * Existe porque sin esto el mantenimiento mensual sumaba al total como si
+ * fuera pago único: «desarrollo 8.500 + mantenimiento 300 = total 8.800», y
+ * esos 8.800 no son lo que el cliente paga. Como acá SIEMPRE se cotiza
+ * desarrollo más mantenimiento, salía mal en todas las propuestas.
+ *
+ * En ASCII y en minúscula a propósito, aunque el resto del repo escriba
+ * «Mensual» con mayúscula: estos valores viajan en el JSON Schema que se le
+ * manda al modelo, y un enum con tildes es una fuente de problemas que no
+ * hace falta correr. La etiqueta linda se arma al mostrarlo.
+ */
+export const RECURRENCIAS = [
+  'unica',
+  'mensual',
+  'trimestral',
+  'semestral',
+  'anual',
+] as const
+export type Recurrencia = (typeof RECURRENCIAS)[number]
+
+export const ETIQUETA_RECURRENCIA: Record<Recurrencia, string> = {
+  unica: 'Pago único',
+  mensual: 'Mensual',
+  trimestral: 'Trimestral',
+  semestral: 'Semestral',
+  anual: 'Anual',
+}
+
 export const ItemSchema = z.object({
   descripcion: z.string(),
   /** La bajada, si la hay. '' si no. */
@@ -46,6 +76,7 @@ export const ItemSchema = z.object({
    * precio que falta.
    */
   precioUnitario: z.number().nullable(),
+  recurrencia: z.enum(RECURRENCIAS),
 })
 
 export const EtapaSchema = z.object({
@@ -97,12 +128,45 @@ export type Propuesta = z.infer<typeof PropuestaSchema>
 export type ItemPropuesta = z.infer<typeof ItemSchema>
 export type EtapaPropuesta = z.infer<typeof EtapaSchema>
 
-/** Lo que suman los ítems que tienen precio. Los que no, no suman. */
-export function totalPropuesta(items: ItemPropuesta[]): number {
-  return items.reduce(
-    (t, i) => (i.precioUnitario === null ? t : t + i.cantidad * i.precioUnitario),
-    0,
-  )
+/** Lo que suma un ítem. Sin precio, nada. */
+const subtotalItem = (i: ItemPropuesta) =>
+  i.precioUnitario === null ? 0 : i.cantidad * i.precioUnitario
+
+/**
+ * Los totales, uno por cada forma de cobro que aparezca.
+ *
+ * NO se normaliza a mensual ni se suma todo junto. Un presupuesto no es un
+ * reporte de ingresos: el cliente va a pagar 8.500 una vez y 300 todos los
+ * meses, y las dos cifras tienen que estar separadas porque son dos
+ * compromisos distintos. Prorratear el anual a mensual —que es lo correcto
+ * para mirar el flujo de la empresa— acá sería inventar un número que el
+ * cliente nunca va a ver en su resumen.
+ *
+ * Devuelve sólo las recurrencias con algo adentro, en orden: primero el pago
+ * único, después de más frecuente a menos.
+ */
+export function totalesPorRecurrencia(
+  items: ItemPropuesta[],
+): { recurrencia: Recurrencia; total: number }[] {
+  return RECURRENCIAS.map((recurrencia) => ({
+    recurrencia,
+    total: items
+      .filter((i) => i.recurrencia === recurrencia)
+      .reduce((t, i) => t + subtotalItem(i), 0),
+  })).filter((x) => x.total > 0)
+}
+
+/**
+ * Lo que se paga una sola vez. Es el número que va a la columna `total` de la
+ * tabla y al aviso por push: el que contesta «¿por cuánto salió?».
+ *
+ * Los ítems sin recurrencia cargada cuentan como únicos. Pasa con las
+ * propuestas emitidas antes de que existiera el campo.
+ */
+export function totalUnico(items: ItemPropuesta[]): number {
+  return items
+    .filter((i) => (i.recurrencia ?? 'unica') === 'unica')
+    .reduce((t, i) => t + subtotalItem(i), 0)
 }
 
 /** Cuántos ítems quedaron sin precio. El PDF lo aclara al pie del total. */

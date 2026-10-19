@@ -22,10 +22,13 @@ import { SimpleSelect } from '@/components/shared/simple-select'
 import { ListaEtapas, ListaItems, ListaTexto } from './listas'
 import {
   sinPrecio,
-  subtotal,
+  totalesEditables,
   type PropuestaEditable,
 } from '@/lib/propuesta/editar'
-import type { Plantilla } from '@/lib/propuesta/schema'
+import {
+  ETIQUETA_RECURRENCIA,
+  type Plantilla,
+} from '@/lib/propuesta/schema'
 import type { Client } from '@/lib/types'
 
 const OTRO = '__otro__'
@@ -75,7 +78,10 @@ export function EditorPropuesta({
     v: PropuestaEditable[K],
   ) => onChange({ ...propuesta, [k]: v })
 
-  const total = React.useMemo(() => subtotal(propuesta.items), [propuesta.items])
+  const totales = React.useMemo(
+    () => totalesEditables(propuesta.items),
+    [propuesta.items],
+  )
   const faltanPrecios = sinPrecio(propuesta.items)
 
   // El cliente puede no estar cargado en el sistema: se cotiza todo el tiempo
@@ -202,18 +208,34 @@ export function EditorPropuesta({
           moneda={propuesta.moneda}
           onChange={(items) => set('items', items)}
         />
-        <div className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3">
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">
-            Total
-          </span>
-          {/* Con el código de moneda siempre: USD y ARS comparten el «$». */}
-          <span className="text-lg font-semibold tabular-nums">
-            {propuesta.moneda}{' '}
-            {new Intl.NumberFormat('es-AR', {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }).format(total)}
-          </span>
+        {/* Un total por forma de cobro, igual que en el PDF. Lo mensual no se
+            suma a lo único: son dos compromisos distintos y mezclarlos le
+            diría al cliente un número que no va a pagar. */}
+        <div className="flex flex-col gap-1.5 rounded-xl border border-white/5 bg-white/[0.03] px-4 py-3">
+          {totales.length === 0 ? (
+            <span className="text-sm text-muted-foreground">
+              Sin importes cargados todavía.
+            </span>
+          ) : (
+            totales.map(({ recurrencia, total }) => (
+              <div
+                key={recurrencia}
+                className="flex items-baseline justify-between gap-3"
+              >
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {ETIQUETA_RECURRENCIA[recurrencia]}
+                </span>
+                {/* Con el código de moneda siempre: USD y ARS comparten el «$». */}
+                <span className="text-lg font-semibold tabular-nums">
+                  {propuesta.moneda}{' '}
+                  {new Intl.NumberFormat('es-AR', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  }).format(total)}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </Seccion>
 

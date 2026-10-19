@@ -41,6 +41,21 @@ Cuando es ambiguo —"unos dos mil y pico", "arrancamos con algo chico", "lo cha
 
 Por cada dato que no pudiste determinar, agregá a "faltantes" una frase corta, en segunda persona, diciendo qué falta: "Falta el precio del módulo de reportes", "No aclara la moneda; puse USD", "No dice el plazo de la segunda etapa". Las más importantes primero, no más de ocho. Si no falta nada, "faltantes" es [].
 
+# CADA CUÁNTO SE COBRA CADA ÍTEM
+
+Todo ítem lleva "recurrencia", y es importante: lo que se cobra todos los meses
+no se suma al total del pago único.
+
+- "unica": se paga una sola vez. El desarrollo, una capacitación, un módulo.
+- "mensual": "300 por mes de mantenimiento", "soporte mensual", "USD 50/mes".
+- "trimestral", "semestral", "anual": cuando lo diga el texto.
+
+Si no se aclara, es "unica". Pero si el texto dice "por mes", "mensual",
+"al mes" o "/mes", es "mensual" aunque no esté la palabra mantenimiento.
+
+Y el precio del ítem es el de UN período, no el del año: "300 por mes" es
+precioUnitario 300 con recurrencia mensual, nunca 3600.
+
 # VALORES POR DEFECTO
 
 - moneda: si el texto no la nombra, USD, y una línea en "faltantes".

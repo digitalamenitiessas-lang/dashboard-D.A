@@ -15,7 +15,12 @@
  */
 
 import { todayIso } from '@/lib/format'
-import type { ItemPropuesta, Propuesta } from './schema'
+import {
+  RECURRENCIAS,
+  type ItemPropuesta,
+  type Propuesta,
+  type Recurrencia,
+} from './schema'
 
 export interface ItemEditable {
   descripcion: string
@@ -23,6 +28,8 @@ export interface ItemEditable {
   cantidad: string
   /** '' es «falta el precio». '0' es bonificado. No son lo mismo. */
   precioUnitario: string
+  /** Esta no se edita como texto: sale de un select, ya es un valor valido. */
+  recurrencia: Recurrencia
 }
 
 export type PropuestaEditable = Omit<Propuesta, 'items' | 'validezDias'> & {
@@ -44,6 +51,8 @@ export function aEditable(p: Propuesta): PropuestaEditable {
       detalle: i.detalle,
       cantidad: String(i.cantidad),
       precioUnitario: aTexto(i.precioUnitario),
+      // Las propuestas emitidas antes de que existiera el campo no lo traen.
+      recurrencia: RECURRENCIAS.includes(i.recurrencia) ? i.recurrencia : 'unica',
     })),
     validezDias: aTexto(p.validezDias),
   }
@@ -61,6 +70,7 @@ export function aPropuesta(e: PropuestaEditable): Propuesta {
         detalle: i.detalle.trim(),
         cantidad: aNumero(i.cantidad) ?? 1,
         precioUnitario: aNumero(i.precioUnitario),
+        recurrencia: i.recurrencia,
       })),
     validezDias: aNumero(e.validezDias),
   }
@@ -94,17 +104,33 @@ export const itemVacio = (): ItemEditable => ({
   detalle: '',
   cantidad: '1',
   precioUnitario: '',
+  recurrencia: 'unica',
 })
 
 export const etapaVacia = () => ({ nombre: '', descripcion: '', plazo: '' })
 
-/** Lo que suman los ítems que tienen precio, mientras se edita. */
-export function subtotal(items: ItemEditable[]): number {
-  return items.reduce((t, i) => {
-    const precio = aNumero(i.precioUnitario)
-    if (precio === null) return t
-    return t + (aNumero(i.cantidad) ?? 1) * precio
-  }, 0)
+/**
+ * Los totales mientras se edita, separados por cada cuánto se cobran.
+ *
+ * Mismo criterio que `totalesPorRecurrencia()` sobre la propuesta ya armada:
+ * lo mensual no se suma a lo único. Se repite acá y no se reusa aquélla
+ * porque los montos todavía son texto a medio escribir, y convertir la
+ * propuesta entera en cada tecla para leer un total sería dar una vuelta
+ * larga para lo mismo.
+ */
+export function totalesEditables(
+  items: ItemEditable[],
+): { recurrencia: Recurrencia; total: number }[] {
+  return RECURRENCIAS.map((recurrencia) => ({
+    recurrencia,
+    total: items
+      .filter((i) => i.recurrencia === recurrencia)
+      .reduce((t, i) => {
+        const precio = aNumero(i.precioUnitario)
+        if (precio === null) return t
+        return t + (aNumero(i.cantidad) ?? 1) * precio
+      }, 0),
+  })).filter((x) => x.total > 0)
 }
 
 /** Cuántas filas con descripción quedaron sin precio. */

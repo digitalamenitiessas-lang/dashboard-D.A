@@ -37,8 +37,9 @@ import { todayIso } from '@/lib/format'
 import {
   type Plantilla,
   type Propuesta,
+  ETIQUETA_RECURRENCIA,
   itemsSinPrecio,
-  totalPropuesta,
+  totalesPorRecurrencia,
 } from './schema'
 
 export { precargarPdf } from '@/lib/pdf'
@@ -84,8 +85,16 @@ function tablaItems(h: Hoja, p: Propuesta): void {
       sanear(item.descripcion) || 'Sin detalle',
       COL.anchoDesc,
     ) as string[]
-    const detalle = item.detalle
-      ? (h.doc.splitTextToSize(sanear(item.detalle), COL.anchoDesc) as string[])
+    // La recurrencia va pegada al ítem y no sólo en el total: si el renglón
+    // dice «Mantenimiento — USD 300» a secas, el cliente lee trescientos
+    // dólares una vez. Tiene que decir que son por mes ahí mismo.
+    const cadaCuanto =
+      item.recurrencia && item.recurrencia !== 'unica'
+        ? ETIQUETA_RECURRENCIA[item.recurrencia]
+        : ''
+    const bajada = [cadaCuanto, item.detalle].filter(Boolean).join(' · ')
+    const detalle = bajada
+      ? (h.doc.splitTextToSize(sanear(bajada), COL.anchoDesc) as string[])
       : []
 
     // La fila entera se pide de una: una fila partida al medio por un salto de
@@ -122,10 +131,23 @@ function tablaItems(h: Hoja, p: Propuesta): void {
   }
 }
 
+/**
+ * El recuadro de los totales. Uno por cada forma de cobro que haya.
+ *
+ * NO se suma todo junto. Un desarrollo de 8.500 más un mantenimiento de 300
+ * por mes no son 8.800: son dos compromisos distintos, y un papel que los
+ * mezcla le está diciendo al cliente un número que no va a pagar. Pasaba, y
+ * como acá siempre se cotiza desarrollo más mantenimiento, pasaba en todas.
+ */
 function bloqueTotal(h: Hoja, p: Propuesta): void {
-  const total = totalPropuesta(p.items)
+  const totales = totalesPorRecurrencia(p.items)
   const sinPrecio = itemsSinPrecio(p.items)
-  const alto = sinPrecio ? 22 : 16
+  if (totales.length === 0 && !sinPrecio) return
+
+  // 16mm para el primero, 9 por cada uno más, y 6 extra si hay que aclarar
+  // los ítems sin precio.
+  const alto =
+    Math.max(16, 7 + totales.length * 9) + (sinPrecio ? 6 : 0)
 
   asegurarEspacio(h, alto + 4)
   h.y += 2
@@ -133,17 +155,31 @@ function bloqueTotal(h: Hoja, p: Propuesta): void {
   h.doc.setFillColor(245, 245, 245).setDrawColor(220, 220, 220).setLineWidth(0.3)
   h.doc.roundedRect(M, h.y, UTIL, alto, 2, 2, 'FD')
 
-  h.doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(GRIS)
-  h.doc.text(
-    p.incluyeImpuestos ? 'TOTAL (IMPUESTOS INCLUIDOS)' : 'TOTAL + IMPUESTOS',
-    M + 6,
-    h.y + 7,
-  )
-  h.doc.setFont('helvetica', 'bold').setFontSize(15).setTextColor(TINTA)
-  // Siempre con el código de moneda: USD y ARS comparten el «$», y un «$625»
-  // en un papel que sale para afuera se lee como pesos.
-  h.doc.text(`${p.moneda} ${miles(total)}`, ANCHO - M - 6, h.y + 9.5, {
-    align: 'right',
+  const impuestos = p.incluyeImpuestos ? ' (IMPUESTOS INCLUIDOS)' : ' + IMPUESTOS'
+  let y = h.y + 9.5
+
+  totales.forEach(({ recurrencia, total }, i) => {
+    const esPrimero = i === 0
+    h.doc.setFont('helvetica', 'normal').setFontSize(8).setTextColor(GRIS)
+    h.doc.text(
+      sanear(
+        recurrencia === 'unica'
+          ? `TOTAL${impuestos}`
+          : `${ETIQUETA_RECURRENCIA[recurrencia].toUpperCase()}${impuestos}`,
+      ),
+      M + 6,
+      y - 2.5,
+    )
+    // El primero más grande: es el que se mira. Los recurrentes abajo, en
+    // cuerpo menor, pero con el mismo peso visual entre ellos.
+    h.doc
+      .setFont('helvetica', 'bold')
+      .setFontSize(esPrimero ? 15 : 12)
+      .setTextColor(TINTA)
+    // Siempre con el código de moneda: USD y ARS comparten el «$», y un
+    // «$625» en un papel que sale para afuera se lee como pesos.
+    h.doc.text(`${p.moneda} ${miles(total)}`, ANCHO - M - 6, y, { align: 'right' })
+    y += 9
   })
 
   if (sinPrecio) {
@@ -151,9 +187,11 @@ function bloqueTotal(h: Hoja, p: Propuesta): void {
     // incompleto.
     h.doc.setFont('helvetica', 'normal').setFontSize(7.5).setTextColor(GRIS)
     h.doc.text(
-      `No incluye ${sinPrecio} ${sinPrecio === 1 ? 'ítem sin precio definido' : 'ítems sin precio definido'}.`,
+      sanear(
+        `No incluye ${sinPrecio} ${sinPrecio === 1 ? 'ítem sin precio definido' : 'ítems sin precio definido'}.`,
+      ),
       M + 6,
-      h.y + 17,
+      y - 1,
     )
   }
 
