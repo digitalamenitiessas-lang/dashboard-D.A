@@ -45,6 +45,7 @@ const MODELO = process.env.OPENROUTER_MODEL || 'anthropic/claude-sonnet-5'
 
 export type CodigoError =
   | 'sin_clave'
+  | 'sin_saldo'
   | 'sin_estructura'
   | 'limite'
   | 'proveedor'
@@ -120,6 +121,25 @@ export async function estructurar(
       throw new ErrorPropuesta(
         'limite',
         'OpenRouter está limitando las consultas. Probá de nuevo en un minuto.',
+        cuerpo,
+      )
+    }
+    /**
+     * 402: no alcanza el saldo.
+     *
+     * Tiene mensaje propio porque es el único error del proveedor que NO se
+     * arregla esperando, y el genérico decía «probá de nuevo en un rato» —
+     * que acá es mentira: sin cargar crédito no va a funcionar nunca, y quien
+     * lo lea va a reintentar para siempre.
+     *
+     * OpenRouter reserva el crédito por el `max_tokens` que se pide, no por
+     * lo que termina usando, así que esto salta aunque la propuesta fuera a
+     * salir barata.
+     */
+    if (respuesta.status === 402) {
+      throw new ErrorPropuesta(
+        'sin_saldo',
+        'No hay saldo en OpenRouter. Hay que cargar crédito en openrouter.ai para poder generar propuestas.',
         cuerpo,
       )
     }

@@ -101,6 +101,9 @@ export async function POST(req: Request) {
       console.error(`[propuesta] ${e.codigo}:`, e.detalle ?? e.message)
       const status =
         e.codigo === 'sin_clave' ? 500
+        // 402 tal cual: no es un fallo nuestro ni del proveedor, es que no
+        // hay con qué pagar la llamada. Reintentar no cambia nada.
+        : e.codigo === 'sin_saldo' ? 402
         : e.codigo === 'limite' ? 429
         : e.codigo === 'sin_estructura' ? 422
         : 502
