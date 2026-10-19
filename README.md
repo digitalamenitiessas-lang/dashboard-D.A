@@ -5,6 +5,10 @@ facturas, mantenimientos,
 gastos, caja, tickets, notas, seguimientos y alertas. Los **proyectos** son
 el núcleo del sistema y todo lo demás cuelga de ellos.
 
+> **El 19/10/2026 el proyecto se mudó de Vercel a un VPS propio.** Corre en
+> https://admin.digitalamenities.com.ar y se despliega a mano con un comando.
+> Antes de tocar variables de entorno o desplegar, leé [DESPLIEGUE.md](DESPLIEGUE.md).
+
 ## Stack
 
 - Next.js 16 (App Router) + TypeScript
@@ -375,8 +379,9 @@ Al terminar imprime las tres cosas que quedan a mano y no puede hacer solo:
 
 1. Correr `supabase/20_push.sql` en el SQL Editor, y después el `insert` en
    `app_settings` que el script te deja armado con la URL y el token.
-2. Cargar `NEXT_PUBLIC_VAPID_PUBLIC_KEY` en Vercel y **redeployar** — esa
-   variable se compila adentro del bundle, así que un deploy viejo no la tiene
+2. Cargar `NEXT_PUBLIC_VAPID_PUBLIC_KEY` en el `.env.local` **del servidor** y
+   volver a compilar (ver `DESPLIEGUE.md`) — esa variable se incrusta en el
+   bundle al hacer el build, así que una compilación hecha sin ella no la tiene
    y la campana no va a poder activar nada.
 3. En cada celular, tocar la campana.
 
@@ -396,7 +401,7 @@ hacés, todos los celulares se tienen que volver a suscribir.
 
 | Variable | Dónde vive |
 | --- | --- |
-| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | pública — `.env.local` y Vercel |
+| `NEXT_PUBLIC_VAPID_PUBLIC_KEY` | pública — `.env.local` local y el del servidor |
 | `VAPID_PRIVATE_KEY` | secreta — `.env.local` y secretos de Supabase |
 | `PUSH_TOKEN` | secreto — `.env.local` y secretos de Supabase |
 

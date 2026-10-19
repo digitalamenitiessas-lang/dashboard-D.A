@@ -16,9 +16,14 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
 /**
- * Una generación tarda entre diez y cuarenta segundos. El techo por defecto de
- * una función en Vercel es bastante menor que eso, así que sin esto el 504 es
- * sistemático y el mensaje que ve el usuario es el de Vercel, no el nuestro.
+ * Una generación tarda entre diez y cuarenta segundos.
+ *
+ * Desde que esto corre en un VPS propio con `next start` (ver DESPLIEGUE.md)
+ * `maxDuration` no hace nada: no hay función serverless que cortar, y quien
+ * manda es el timeout de Caddy. Se deja igual porque documenta cuánto puede
+ * tardar la ruta y porque volvería a aplicar si alguna vez se despliega en una
+ * plataforma serverless. Si un día el pedido muere antes de los 40 segundos,
+ * el que hay que mirar es Caddy, no esto.
  */
 export const maxDuration = 60
 
