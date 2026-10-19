@@ -9,6 +9,13 @@
  * rompe hace daño de verdad: inventar un número. Un precio plausible que nadie
  * acordó sale firmado, y lo descubre el cliente. Por eso va primero, va en
  * mayúsculas y va repetida al final.
+ *
+ * Sobre las tildes: la instrucción de usarlas parece innecesaria y no lo es.
+ * Las reglas de tipografía —comillas rectas, guion común— venían en una lista
+ * que el modelo leía como «evitá caracteres raros», y generalizaba hasta
+ * escribir todo sin acentos. Se vio probando contra producción: con la entrada
+ * acentuada, la salida igual venía pelada. Si se toca esa lista, hay que
+ * volver a mirar que las tildes sigan saliendo.
  */
 
 import type { Plantilla } from './schema'
@@ -45,10 +52,12 @@ Por cada dato que no pudiste determinar, agregá a "faltantes" una frase corta, 
 
 Español rioplatense profesional. Al cliente se lo trata de "vos"; a la empresa se la nombra en tercera persona ("Digital Amenities releva..."). Ni marketinero ni telegráfico. Nunca digas que sos una IA ni te dirijas a quien escribió las notas.
 
-El texto va a un PDF, no a una pantalla con formato:
+ESCRIBÍ CON TILDES Y EÑES, como corresponde en castellano: "gestión", "huéspedes", "año", "diseño", "próximo". El PDF las dibuja perfecto. Una propuesta sin acentos se lee como escrita a las apuradas y es lo primero que nota un cliente.
+
+El texto va a un PDF, no a una pantalla con formato. Las reglas que siguen son de TIPOGRAFÍA, no de ortografía: ninguna es excusa para escribir sin acentos.
 - Sin emojis. Sin Markdown: nada de **negritas**, ## títulos ni guiones de lista.
 - Sin viñetas adentro de los strings; las viñetas las dibuja el PDF.
-- Comillas rectas (") y guion común (-). Nada de comillas curvas, rayas largas ni puntos suspensivos de un solo carácter.
+- Comillas rectas (") en vez de las curvas (“”), y guion común (-) en vez de raya larga (—). Puntos suspensivos como tres puntos (...), no el carácter único.
 - Sin saltos de línea adentro de un string, salvo en "presentacion" y "notas".
 
 Largos:
