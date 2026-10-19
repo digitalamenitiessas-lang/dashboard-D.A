@@ -72,6 +72,29 @@ El 22 está en `/opt/node22/bin`, y es el que usa este proyecto (`engines`
 pide `>=22`). `pnpm` es el 10.34.5, instalado con corepack, y solo funciona
 invocado con Node 22.
 
+## Sacar el dominio del proyecto de Vercel
+
+> **Urgente, y todavía sin hacer.**
+
+El DNS ya apunta al VPS, pero `admin.digitalamenities.com.ar` **sigue atado al
+proyecto de Vercel**, que está bloqueado. Verificado el 19/10/2026 forzando la
+resolución:
+
+```
+--resolve ...:76.76.21.21    →  402  Server: Vercel  X-Vercel-Error: DEPLOYMENT_DISABLED
+--resolve ...:2.25.185.242   →  200  (Caddy)
+```
+
+Mientras Vercel siga respondiendo por ese nombre, cualquiera que llegue a su
+borde —un DNS con la respuesta vieja todavía cacheada, una red con otro
+resolver, un navegador reusando una conexión— ve una pantalla que dice
+«Deployment Paused» en vez del dashboard. No es un error nuestro y no hay nada
+que tocar en el servidor: hay que **quitar el dominio del proyecto en el panel
+de Vercel** (Project → Settings → Domains → Remove).
+
+Pasó de verdad: el navegador de prueba daba 402 mientras `curl` desde la misma
+máquina daba 200, y los tres resolvers públicos ya devolvían la IP del VPS.
+
 ## Pendientes conocidos
 
 - **Faltan tres variables** que el `.env.example` declara y el `.env.local` no
