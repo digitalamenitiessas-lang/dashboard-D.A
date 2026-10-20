@@ -8,7 +8,15 @@
  * jsPDF no dibuja paths. Duplicar novecientos caracteres de path entre los
  * dos es la clase de cosa que queda desincronizada al primer retoque.
  *
- * Arte original: public/icono.svg
+ * Arte original: public/icono.svg — con O, «icono». Ojo con eso: había un
+ * `public/icon.svg` que era el logo que venía con el andamiaje de v0, y de ahí
+ * se generaron por error los tres PNG del manifiesto. Resultado: el ícono del
+ * PWA en Android era el de v0, no el nuestro, y nadie lo notó hasta que
+ * alguien lo agregó a la pantalla de inicio. Ese archivo ya no está.
+ *
+ * Los íconos del PWA —`public/icon-192.png`, `icon-512.png` y
+ * `icon-maskable-512.png`— se rasterizan de ESTE path, igual que el logo del
+ * PDF. Si hay que rehacerlos, salen de acá y de ningún otro lado.
  */
 
 export const BRAND_VIEWBOX = { width: 861.18, height: 1128.66 }
