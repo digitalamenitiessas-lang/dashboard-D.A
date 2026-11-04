@@ -65,7 +65,8 @@ import { cn } from '@/lib/utils'
 import type { MaintenanceCharge, Project } from '@/lib/types'
 
 export default function MantenimientosPage() {
-  const { projects, clients, maintenanceCharges } = useStore()
+  const { projects, clients, maintenanceCharges, facturas, payments } =
+    useStore()
   const [activateTarget, setActivateTarget] = React.useState<Project | null>(null)
   const [collectTarget, setCollectTarget] = React.useState<Project | null>(null)
   const [newPlanOpen, setNewPlanOpen] = React.useState(false)
@@ -77,7 +78,10 @@ export default function MantenimientosPage() {
   // toca cobrar es el impago más viejo, no el del mes que viene.
   const active = projects
     .filter((p) => p.maintenance.status === 'Activo')
-    .map((p) => ({ project: p, ...maintenancePeriods(p, maintenanceCharges) }))
+    .map((p) => ({
+      project: p,
+      ...maintenancePeriods(p, maintenanceCharges, facturas, payments),
+    }))
     .sort((a, b) => (a.next ?? '9999').localeCompare(b.next ?? '9999'))
 
   /**

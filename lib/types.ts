@@ -645,6 +645,18 @@ export interface Factura {
    */
   aplicado: number | null
   notas: string
+  /**
+   * El mes de mantenimiento que paga, siempre el día 1 (`2026-10-01`).
+   * Null = no es de mantenimiento.
+   *
+   * Es lo que dice que un mes está cobrado: el período se tapa cuando su
+   * factura se cancela, no por la fecha en que entró la plata. Ver
+   * `maintenancePeriods()` y `supabase/27_facturas_de_mantenimiento.sql`.
+   *
+   * Una factura con período no suma a lo facturado del desarrollo: el abono
+   * mensual no descuenta nada de lo cotizado.
+   */
+  periodo: string | null
   createdAt: string
 }
 

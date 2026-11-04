@@ -323,10 +323,16 @@ export function mapFactura(r: Row): Factura {
     importe: num(r.importe),
     aplicado: r.aplicado == null ? null : num(r.aplicado),
     notas: str(r.notas),
+    // Sin `27_facturas_de_mantenimiento.sql` la columna no viene: null.
+    periodo: r.periodo ?? null,
     createdAt: r.created_at,
   }
 }
 
+/**
+ * `periodo` sólo viaja si vino definido: mandarlo como null a una base sin
+ * el paso 27 rompería el guardado de cualquier factura.
+ */
 export function facturaToRow(f: Partial<Factura>): Row {
   return pick(f, {
     clienteId: 'cliente_id',
@@ -339,6 +345,7 @@ export function facturaToRow(f: Partial<Factura>): Row {
     importe: 'importe',
     aplicado: 'aplicado',
     notas: 'notas',
+    periodo: 'periodo',
   })
 }
 

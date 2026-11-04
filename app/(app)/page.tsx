@@ -54,6 +54,7 @@ export default function DashboardPage() {
     activity,
     tasks,
     maintenanceCharges,
+    facturas,
     tickets,
     ticketsReady,
     seguimientos,
@@ -99,6 +100,8 @@ export default function DashboardPage() {
       const { next, overdue, overdueTotal } = maintenancePeriods(
         project,
         maintenanceCharges,
+        facturas,
+        payments,
       )
       return next ? [{ project, next, overdue, overdueTotal }] : []
     })
@@ -119,6 +122,8 @@ export default function DashboardPage() {
     notes,
     tasks,
     maintenanceCharges,
+    facturas,
+    payments,
     tickets,
     seguimientos,
   })

@@ -25,6 +25,8 @@ export function AlertsMenu() {
     notes,
     tasks,
     maintenanceCharges,
+    facturas,
+    payments,
     tickets,
     seguimientos,
     avisos,
@@ -38,6 +40,8 @@ export function AlertsMenu() {
     notes,
     tasks,
     maintenanceCharges,
+    facturas,
+    payments,
     tickets,
     seguimientos,
   }).filter((a) => !callados.has(a.id))

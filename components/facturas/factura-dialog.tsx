@@ -21,6 +21,7 @@ import { MoneyInput } from '@/components/shared/money-input'
 import { SimpleSelect, toOptions } from '@/components/shared/simple-select'
 import { useStore } from '@/lib/store'
 import { estadoFactura, imputadoA, siguienteNumero } from '@/lib/facturas'
+import { hasMaintenancePlan, nombreDelPeriodo } from '@/lib/derive'
 import { CotizacionHint } from '@/components/shared/cotizacion-hint'
 import { sugerenciaParaCobro, useCotizacion } from '@/lib/cotizacion'
 import { formatMoney, todayIso } from '@/lib/format'
@@ -63,6 +64,7 @@ export function FacturaDialog({
     payments,
     facturas,
     facturasReady,
+    periodosReady,
     addFactura,
     updateFactura,
     deleteFactura,
@@ -128,6 +130,8 @@ export function FacturaDialog({
     factura?.aplicado ? String(factura.importe / factura.aplicado) : '',
   )
   const [notas, setNotas] = React.useState(factura?.notas ?? '')
+  /** `yyyy-mm`, lo que maneja el input de mes. Vacío = no es de mantenimiento. */
+  const [mes, setMes] = React.useState(factura?.periodo?.slice(0, 7) ?? '')
   const [confirmandoBorrado, setConfirmandoBorrado] = React.useState(false)
   const [saving, setSaving] = React.useState(false)
 
@@ -148,12 +152,54 @@ export function FacturaDialog({
    * Sólo al elegir el proyecto, no en cada render: con un efecto que mirara
    * `moneda` volvería a pisarla apenas se la cambia.
    */
+  //
+  // Con mes de mantenimiento, no: la moneda es la del plan, y abrir para
+  // editar la de octubre de HoMeApp (pesos) la pasaría a dólares.
   React.useEffect(() => {
-    if (proyecto) setMoneda(proyecto.currency)
+    if (proyecto && !mes) setMoneda(proyecto.currency)
+    // `mes` afuera a propósito: borrar el mes no tiene por qué cambiar la moneda.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [proyecto])
 
-  /** ¿Se le factura al cliente en otra moneda que la cotizada? */
-  const otraMoneda = !!proyecto && moneda !== proyecto.currency
+  /**
+   * ¿Es la factura de un mes de mantenimiento? Sólo se puede marcar si el
+   * proyecto tiene plan: el mes es de un plan, y sin proyecto no hay plan.
+   */
+  const conPlan =
+    periodosReady && !!proyecto && hasMaintenancePlan(proyecto.maintenance)
+  const periodo = conPlan && mes ? `${mes}-01` : null
+  const mesRepetido =
+    !!periodo &&
+    facturas.some(
+      (f) =>
+        f.id !== factura?.id &&
+        f.projectId === proyecto?.id &&
+        f.periodo === periodo,
+    )
+
+  /**
+   * Al marcar el mes en una factura nueva se completa lo que dice el plan.
+   * Sólo lo que está vacío: si ya escribieron un concepto, no se pisa.
+   */
+  function cambiarMes(v: string) {
+    setMes(v)
+    if (factura || !proyecto || !v) return
+    const plan = proyecto.maintenance
+    setMoneda(plan.currency)
+    if (importe === '') setImporte(String(plan.amount))
+    if (concepto.trim() === '') {
+      setConcepto(
+        `Mantenimiento ${proyecto.name} · ${nombreDelPeriodo(`${v}-01`)}`,
+      )
+    }
+  }
+
+  /**
+   * ¿Se le factura al cliente en otra moneda que la cotizada? Con mes de
+   * mantenimiento no importa: el abono no descuenta nada de lo cotizado, así
+   * que no hay equivalente que pedir.
+   */
+  const otraMoneda = !!proyecto && !periodo && moneda !== proyecto.currency
 
   // El mismo lado del mostrador que un cobro: le estamos poniendo precio en
   // pesos a una deuda en dólares, así que corresponde la de venta — que es la
@@ -211,7 +257,8 @@ export function FacturaDialog({
     // mejor que traducir el error del trigger después de haber guardado.
     (!otraMoneda || Number(aplicado) > 0) &&
     emitidaOn !== '' &&
-    !fechaAlReves
+    !fechaAlReves &&
+    !mesRepetido
 
   const yaImputado = factura ? imputadoA(factura, payments) : 0
 
@@ -233,6 +280,8 @@ export function FacturaDialog({
       // día discrepe del original.
       aplicado: otraMoneda ? Number(aplicado) : null,
       notas: notas.trim(),
+      // Sin el paso 27 la columna no existe y mandarla rompería el guardado.
+      ...(periodosReady ? { periodo } : {}),
     }
     const ok = factura
       ? await updateFactura(factura.id, datos)
@@ -329,11 +378,42 @@ export function FacturaDialog({
                 ]}
               />
               <p className="text-xs text-muted-foreground text-pretty">
-                {proyecto
-                  ? `Suma a lo facturado de ${proyecto.name}, y va en ${proyecto.currency} como el proyecto.`
-                  : 'Un servicio que no es parte de ningún desarrollo: hosting, soporte, dominio.'}
+                {proyecto && periodo
+                  ? `Es el mantenimiento de ${proyecto.name}: no suma a lo facturado del desarrollo.`
+                  : proyecto
+                    ? `Suma a lo facturado de ${proyecto.name}, y va en ${proyecto.currency} como el proyecto.`
+                    : 'Un servicio que no es parte de ningún desarrollo: hosting, soporte, dominio.'}
               </p>
             </Field>
+
+            {/* El mes que paga. Es lo que tapa ese período en
+                /mantenimientos cuando la factura se cancela, y lo que usa la
+                generación automática para no repetir un mes. */}
+            {conPlan ? (
+              <Field>
+                <FieldLabel htmlFor="fac-mes">
+                  Mes de mantenimiento (opcional)
+                </FieldLabel>
+                <Input
+                  id="fac-mes"
+                  type="month"
+                  value={mes}
+                  onChange={(e) => cambiarMes(e.target.value)}
+                  aria-invalid={mesRepetido || undefined}
+                />
+                {mesRepetido ? (
+                  <p role="alert" className="text-xs text-amber-300">
+                    Ese mes ya tiene su factura en {proyecto?.name}.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground text-pretty">
+                    Se cobra mes vencido: la de octubre es la que se cobra del 1
+                    al 10 de noviembre. Al cancelarse, se genera sola la del mes
+                    siguiente.
+                  </p>
+                )}
+              </Field>
+            ) : null}
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <Field>

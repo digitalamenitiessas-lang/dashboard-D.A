@@ -46,6 +46,8 @@ import type {
   PropuestaEmitida,
 } from './propuesta/schema'
 import { formatMoney, formatMoneyWithCode, todayIso } from './format'
+import { facturasDeMantenimientoQueFaltan, nombreDelPeriodo } from './derive'
+import { siguienteNumero } from './facturas'
 import type {
   Account,
   ActivityEntry,
@@ -69,6 +71,10 @@ import type {
   TaskKind,
   Ticket,
 } from './types'
+
+export type NuevaFactura = Omit<Factura, 'id' | 'createdAt' | 'periodo'> & {
+  periodo?: string | null
+}
 
 export interface NewProjectInput {
   name: string
@@ -136,6 +142,12 @@ interface StoreValue {
   seguimientosReady: boolean
   /** False mientras no se haya corrido `16_facturas.sql`. Ídem. */
   facturasReady: boolean
+  /**
+   * False mientras no se haya corrido `27_facturas_de_mantenimiento.sql`: sin
+   * `facturas.periodo` no se generan las facturas de cada mes ni se muestra
+   * el campo para marcarlas.
+   */
+  periodosReady: boolean
   /** False mientras no se haya corrido `18_proveedores.sql`. Ídem. */
   proveedoresReady: boolean
   propuestas: PropuestaEmitida[]
@@ -284,7 +296,8 @@ interface StoreValue {
   //
   // No hay `setEstadoFactura`: el estado sale de los cobros imputados. Para
   // moverlo se imputa o se desimputa un cobro, que es lo que de verdad pasó.
-  addFactura: (factura: Omit<Factura, 'id' | 'createdAt'>) => Promise<boolean>
+  /** `periodo` opcional: sin el paso 27 no se manda. */
+  addFactura: (factura: NuevaFactura) => Promise<boolean>
   updateFactura: (id: string, patch: Partial<Factura>) => Promise<boolean>
   deleteFactura: (id: string) => Promise<boolean>
 
@@ -413,6 +426,10 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const [ticketsReady, setTicketsReady] = React.useState(true)
   const [seguimientosReady, setSeguimientosReady] = React.useState(true)
   const [facturasReady, setFacturasReady] = React.useState(true)
+  // Arranca en false, al revés que los demás: generar facturas contra una
+  // base sin la columna no degrada, falla. Recién se habilita cuando la
+  // consulta confirma que está.
+  const [periodosReady, setPeriodosReady] = React.useState(false)
   const [proveedoresReady, setProveedoresReady] = React.useState(true)
   const [propuestas, setPropuestas] = React.useState<PropuestaEmitida[]>([])
   const [propuestasReady, setPropuestasReady] = React.useState(true)
@@ -439,7 +456,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
   const refresh = React.useCallback(async () => {
     try {
-      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg, fa, pv, fp, pr, av] =
+      const [p, c, pay, n, a, t, mc, acc, mov, fe, tk, sg, fa, pv, fp, pr, av, per] =
         await Promise.all([
         supabase
           .from('projects')
@@ -509,6 +526,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           .select('*')
           .order('numero', { ascending: false }),
         supabase.from('avisos').select('*'),
+        // Sólo para saber si existe la columna del paso 27. Con `*` no hay
+        // forma de distinguir «no está» de «no hay facturas todavía».
+        supabase.from('facturas').select('periodo').limit(1),
         ])
 
       // Caja is the newest module: if 08_caja.sql hasn't been run yet its
@@ -539,6 +559,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
 
       const facturasMissing = missing(fa.error)
       setFacturasReady(!facturasMissing)
+      setPeriodosReady(!facturasMissing && !per.error)
 
       const proveedoresMissing = missing(pv.error) || missing(fp.error)
       setProveedoresReady(!proveedoresMissing)
@@ -1356,7 +1377,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   // un cobro, que es lo que de verdad ocurrió.
   // -------------------------------------------------------------------
   const addFactura = React.useCallback(
-    async (factura: Omit<Factura, 'id' | 'createdAt'>) => {
+    async (factura: NuevaFactura) => {
       try {
         const { data, error } = await supabase
           .from('facturas')
@@ -1429,6 +1450,127 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     },
     [supabase, fail],
   )
+
+  /**
+   * Las facturas de mantenimiento se generan solas: apenas se cancela la de
+   * un mes aparece la del siguiente, y si nadie pagó, aparece igual cuando
+   * abre su ventana de cobro. Qué falta lo decide
+   * `facturasDeMantenimientoQueFaltan()`; acá sólo se guardan.
+   *
+   * Corre en el navegador y no en la base porque el número sigue la serie
+   * que ya vienen usando (`siguienteNumero()`), y esa lógica vive acá. Que
+   * dos pestañas lo hagan a la vez no duplica nada: el índice único de
+   * (proyecto, período) rebota la segunda.
+   *
+   * Lo que falla una vez no se reintenta en esta sesión, para no tirar el
+   * mismo error en cada render. Al recargar la página se vuelve a probar.
+   */
+  const generandoFacturas = React.useRef(false)
+  const facturasQueFallaron = React.useRef(new Set<string>())
+  const facturasQueChocaron = React.useRef(new Set<string>())
+  React.useEffect(() => {
+    if (loading || !periodosReady || generandoFacturas.current) return
+    const pendientes = projects.flatMap((project) =>
+      facturasDeMantenimientoQueFaltan(
+        project,
+        maintenanceCharges,
+        facturas,
+        payments,
+      )
+        .map((f) => ({ ...f, project, clave: `${project.id}:${f.periodo}` }))
+        .filter((f) => !facturasQueFallaron.current.has(f.clave)),
+    )
+    if (pendientes.length === 0) return
+
+    generandoFacturas.current = true
+    void (async () => {
+      const nuevas: Factura[] = []
+      let choco = false
+      for (const { project, periodo, emitidaOn, venceOn, clave } of pendientes) {
+        const m = project.maintenance
+        if (!project.clientId) {
+          facturasQueFallaron.current.add(clave)
+          continue
+        }
+        const numero =
+          siguienteNumero([...nuevas, ...facturas]) ??
+          `MNT-${periodo.slice(0, 7)}-${project.id.slice(0, 4).toUpperCase()}`
+        const { data, error } = await supabase
+          .from('facturas')
+          .insert(
+            facturaToRow({
+              clienteId: project.clientId,
+              projectId: project.id,
+              numero,
+              concepto: `Mantenimiento ${project.name} · ${nombreDelPeriodo(periodo)}`,
+              emitidaOn,
+              venceOn,
+              importe: m.amount,
+              moneda: m.currency,
+              aplicado: null,
+              notas: '',
+              periodo,
+            }),
+          )
+          .select()
+          .single()
+        if (error) {
+          // 23505: otra pestaña ya la creó, o ya usó ese número. Se relee y
+          // el efecto vuelve a mirar con lo que haya. Si la misma choca dos
+          // veces ya no es una carrera, y se deja.
+          if (
+            error.code === '23505' &&
+            !facturasQueChocaron.current.has(clave)
+          ) {
+            facturasQueChocaron.current.add(clave)
+            choco = true
+          } else {
+            facturasQueFallaron.current.add(clave)
+            console.error('[store] generar factura de mantenimiento:', error)
+          }
+          break
+        }
+        nuevas.push(mapFactura(data))
+        await logActivity({
+          projectId: project.id,
+          type: 'mantenimiento',
+          message: `Factura ${numero} generada: mantenimiento de ${nombreDelPeriodo(periodo)}`,
+        })
+      }
+
+      if (choco) {
+        const { data } = await supabase
+          .from('facturas')
+          .select('*')
+          .order('emitida_on', { ascending: false })
+        if (data) setFacturas(data.map(mapFactura))
+      } else if (nuevas.length > 0) {
+        setFacturas((prev) =>
+          [...nuevas, ...prev].sort((a, b) =>
+            b.emitidaOn.localeCompare(a.emitidaOn),
+          ),
+        )
+      }
+      if (nuevas.length > 0) {
+        toast.success(
+          nuevas.length === 1
+            ? 'Se generó una factura de mantenimiento'
+            : `Se generaron ${nuevas.length} facturas de mantenimiento`,
+          { description: nuevas.map((f) => f.concepto).join(' · ') },
+        )
+      }
+      generandoFacturas.current = false
+    })()
+  }, [
+    loading,
+    periodosReady,
+    projects,
+    maintenanceCharges,
+    facturas,
+    payments,
+    supabase,
+    logActivity,
+  ])
 
   // -------------------------------------------------------------------
   // Proveedores
@@ -2195,6 +2337,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ticketsReady,
       seguimientosReady,
       facturasReady,
+      periodosReady,
       proveedoresReady,
       propuestas,
       propuestasReady,
@@ -2281,6 +2424,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       ticketsReady,
       seguimientosReady,
       facturasReady,
+      periodosReady,
       proveedoresReady,
       propuestas,
       propuestasReady,

@@ -62,6 +62,7 @@ de Supabase, en orden:
 | `17_facturas_del_cliente.sql` | La factura pasa a ser del cliente, con proyecto opcional |
 | `18_proveedores.sql` | Proveedores, lo que nos facturan y sus pagos |
 | `20_push.sql` | Cola de avisos, triggers y `pg_cron` |
+| `27_facturas_de_mantenimiento.sql` | Cada factura de mantenimiento dice qué mes paga, y se generan solas |
 
 Para una instalación nueva alcanza con **03**, **06**, **08**, **10**, **11**,
 **12** y **13**:

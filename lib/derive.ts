@@ -1,3 +1,4 @@
+import { estadoFactura } from './facturas'
 import { daysUntil } from './format'
 import {
   formatMoneyByCurrency,
@@ -7,6 +8,7 @@ import {
 } from './money'
 import type {
   Currency,
+  Factura,
   Maintenance,
   MaintenanceCharge,
   MaintenanceFrequency,
@@ -277,10 +279,19 @@ export interface MaintenancePeriods {
  * un adelanto, o el cobro del día de la implementación — se imputa al primer
  * período. Dos cobros dentro del mismo período tapan uno solo: el otro sigue
  * contando como impago, que es justamente lo que hay que ver.
+ *
+ * La otra forma de tapar un período, y la que se usa de verdad: que la
+ * factura de ese mes (`Factura.periodo`) esté cancelada. El mantenimiento se
+ * cobra desde /cobros imputado a su factura —es lo que genera el recibo— y
+ * sin esto un mes cobrado así seguía figurando como lo que había que cobrar.
+ * `facturas` y `payments` son obligatorios por lo mismo que `AlertInput`:
+ * olvidarlos marcaría como impago todo mes cobrado por factura.
  */
 export function maintenancePeriods(
   project: Project,
-  charges: MaintenanceCharge[] = [],
+  charges: MaintenanceCharge[],
+  facturas: Factura[],
+  payments: Payment[],
   today = new Date(),
 ): MaintenancePeriods {
   const empty: MaintenancePeriods = { next: null, overdue: [], overdueTotal: {} }
@@ -299,6 +310,55 @@ export function maintenancePeriods(
   const { past, next } = dueDateSeries(m, anchor, today)
   const boundaries = next ? [...past, next] : past
 
+  const covered = tapadosPorCobros(own, boundaries)
+
+  const cancelados = new Set(
+    facturas
+      .filter(
+        (f) =>
+          f.projectId === project.id &&
+          f.periodo !== null &&
+          estadoFactura(f, payments) === 'Cancelada',
+      )
+      .map((f) => f.periodo),
+  )
+  boundaries.forEach((due, i) => {
+    if (cancelados.has(periodoDeVencimiento(m, due))) covered.add(i)
+  })
+
+  const overdue = past.filter((_, i) => !covered.has(i))
+  const overdueTotal: MoneyByCurrency =
+    overdue.length > 0 ? { [m.currency]: overdue.length * m.amount } : {}
+
+  // Si el período en curso ya está pago —se cobró el 2 y la ventana cierra
+  // el 10—, lo que viene es el siguiente. Si no, la pantalla seguía pidiendo
+  // cobrar un mes ya cobrado hasta que se cerraba la ventana.
+  let proximo = next
+  if (proximo && covered.has(boundaries.length - 1)) {
+    const step = frequencyMonths[m.frequency]
+    const dia = Math.max(1, Math.min(m.dueDay, 28))
+    proximo = moverMeses(proximo, step, dia)
+    for (
+      let i = 0;
+      i < 24 && cancelados.has(periodoDeVencimiento(m, proximo));
+      i++
+    ) {
+      proximo = moverMeses(proximo, step, dia)
+    }
+  }
+
+  return { next: overdue[0] ?? proximo, overdue, overdueTotal }
+}
+
+/**
+ * Qué vencimientos (por índice en `boundaries`) tapan los cobros del botón
+ * Cobrar de /mantenimientos. El criterio está explicado arriba, en
+ * `maintenancePeriods()`.
+ */
+function tapadosPorCobros(
+  own: MaintenanceCharge[],
+  boundaries: string[],
+): Set<number> {
   const covered = new Set<number>()
   for (const charge of own) {
     let index = -1
@@ -308,12 +368,133 @@ export function maintenancePeriods(
     }
     covered.add(index < 0 ? 0 : index)
   }
+  return covered
+}
 
-  const overdue = past.filter((_, i) => !covered.has(i))
-  const overdueTotal: MoneyByCurrency =
-    overdue.length > 0 ? { [m.currency]: overdue.length * m.amount } : {}
+/** Corre un ISO `meses` para adelante (o atrás), en el día `dia`. */
+function moverMeses(iso: string, meses: number, dia: number): string {
+  const d = new Date(iso + 'T00:00:00')
+  return toIso(new Date(d.getFullYear(), d.getMonth() + meses, dia))
+}
 
-  return { next: overdue[0] ?? next, overdue, overdueTotal }
+/**
+ * El mes que paga un vencimiento, como su día 1. Se cobra mes vencido: lo
+ * que vence el 1/11 es octubre. En un plan trimestral, el primer mes del
+ * trimestre que se cierra.
+ */
+export function periodoDeVencimiento(m: Maintenance, due: string): string {
+  return moverMeses(due, -frequencyMonths[m.frequency], 1)
+}
+
+/** «octubre 2026», para el concepto de la factura. */
+export function nombreDelPeriodo(periodo: string): string {
+  const d = new Date(periodo + 'T00:00:00')
+  return d.toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+}
+
+export interface FacturaDeMantenimiento {
+  /** El mes que paga, día 1. */
+  periodo: string
+  /** Cuándo se empieza a cobrar: es la fecha de la factura. */
+  emitidaOn: string
+  /** El cierre de la ventana de cobro. */
+  venceOn: string
+}
+
+/**
+ * Las facturas de mantenimiento que este plan debería tener y todavía no.
+ *
+ * Recorre los meses en orden y crea la de un mes cuando:
+ *   - abrió su ventana de cobro (el 1/11 aparece la de octubre aunque nadie
+ *     haya pagado septiembre: la deuda tiene que estar a la vista), o
+ *   - la del mes anterior ya está cancelada. Es el pedido tal cual: «una vez
+ *     cobrado el mes, que se cree la del próximo a cobrar».
+ * Se frena en el primero que no cumple ninguna de las dos.
+ *
+ * Con las facturas cargadas a mano antes del paso 27 hay que tener cuidado,
+ * porque no dicen de qué mes son:
+ *   - si el plan ya tiene alguna marcada, se arranca desde la más vieja de
+ *     ésas, nunca antes: lo de atrás se facturó a mano;
+ *   - si no tiene ninguna marcada pero hay facturas del cliente que tienen
+ *     toda la pinta de ser de este plan (mismo importe y moneda desde el
+ *     arranque), no se genera nada hasta que alguien las marque. Duplicar un
+ *     mes es peor que esperar a que lo marquen.
+ *
+ * Un mes que ya tapó un cobro del botón Cobrar de /mantenimientos tampoco
+ * lleva factura: está pago, y una factura nueva lo haría figurar adeudado.
+ */
+export function facturasDeMantenimientoQueFaltan(
+  project: Project,
+  charges: MaintenanceCharge[],
+  facturas: Factura[],
+  payments: Payment[],
+  today = new Date(),
+): FacturaDeMantenimiento[] {
+  const m = project.maintenance
+  if (m.status !== 'Activo' || m.amount <= 0) return []
+  const anchor = m.startDate ?? m.implementationDate
+  if (!anchor) return []
+
+  const marcadas = new Map<string, Factura>()
+  for (const f of facturas) {
+    if (f.projectId === project.id && f.periodo) marcadas.set(f.periodo, f)
+  }
+  if (marcadas.size === 0) {
+    const sinMarcar = facturas.some(
+      (f) =>
+        f.periodo === null &&
+        f.clienteId === project.clientId &&
+        (f.projectId === project.id || f.projectId === null) &&
+        f.emitidaOn >= anchor &&
+        f.moneda === m.currency &&
+        f.importe === m.amount,
+    )
+    if (sinMarcar) return []
+  }
+  const desde =
+    marcadas.size > 0 ? [...marcadas.keys()].sort()[0] : null
+
+  const { past, next } = dueDateSeries(m, anchor, today)
+  const vencimientos = next ? [...past, next] : past
+  if (vencimientos.length === 0) return []
+  const step = frequencyMonths[m.frequency]
+  const dia = Math.max(1, Math.min(m.dueDay, 28))
+  const pagosPorCobros = tapadosPorCobros(
+    charges.filter((c) => c.projectId === project.id),
+    vencimientos,
+  )
+
+  const faltan: FacturaDeMantenimiento[] = []
+  let anteriorCancelada = false
+  // Los vencimientos ya caídos, el que está en curso y, detrás, los que
+  // vengan mientras se sigan cancelando. El tope es por las dudas: nadie
+  // paga dos años por adelantado.
+  for (let i = 0; i < vencimientos.length + 24; i++) {
+    const due =
+      vencimientos[i] ??
+      moverMeses(vencimientos[vencimientos.length - 1], (i - vencimientos.length + 1) * step, dia)
+    const periodo = periodoDeVencimiento(m, due)
+    if (desde && periodo < desde) continue
+
+    const existente = marcadas.get(periodo)
+    if (existente) {
+      anteriorCancelada = estadoFactura(existente, payments) === 'Cancelada'
+      continue
+    }
+    if (pagosPorCobros.has(i)) {
+      anteriorCancelada = true
+      continue
+    }
+
+    const abrio = (daysUntil(due, today) ?? 1) <= 0
+    if (!abrio && !anteriorCancelada) break
+
+    faltan.push({ periodo, emitidaOn: due, venceOn: cierreDeVentana(m, due) })
+    // Una recién creada no está cancelada: el mes siguiente espera a que se
+    // cobre ésta o a que abra su propia ventana.
+    anteriorCancelada = false
+  }
+  return faltan
 }
 
 // ---------------------------------------------------------------------
@@ -489,6 +670,9 @@ interface AlertInput {
   tasks: Task[]
   /** Sin los cobros no hay forma de saber qué períodos quedaron impagos. */
   maintenanceCharges: MaintenanceCharge[]
+  /** Ídem: un mes también se tapa cancelando su factura (paso 27). */
+  facturas: Factura[]
+  payments: Payment[]
   /** Si `11_tickets.sql` no está corrido llega vacío, y no hay alertas. */
   tickets: Ticket[]
   /** Ídem con `12_seguimientos.sql`. */
@@ -509,6 +693,8 @@ export function buildAlerts({
   notes,
   tasks,
   maintenanceCharges,
+  facturas,
+  payments,
   tickets,
   seguimientos,
 }: AlertInput): AlertItem[] {
@@ -519,6 +705,8 @@ export function buildAlerts({
     const { next, overdue, overdueTotal } = maintenancePeriods(
       project,
       maintenanceCharges,
+      facturas,
+      payments,
     )
     if (!next) continue
     // Una sola alerta por proyecto, aunque haya seis períodos sin cobrar:

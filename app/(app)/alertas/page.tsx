@@ -65,6 +65,8 @@ export default function AlertasPage() {
     activity,
     tasks,
     maintenanceCharges,
+    facturas,
+    payments,
     tickets,
     seguimientos,
     avisos,
@@ -81,6 +83,8 @@ export default function AlertasPage() {
     notes,
     tasks,
     maintenanceCharges,
+    facturas,
+    payments,
     tickets,
     seguimientos,
   }).filter((a) => !callados.has(a.id))

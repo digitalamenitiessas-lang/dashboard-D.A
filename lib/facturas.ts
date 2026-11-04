@@ -201,8 +201,12 @@ export function resumenFacturacion(
   // Sólo las que apuntan a ESTE proyecto. Una factura de servicio suelto del
   // mismo cliente no es de este proyecto y no entra: sumarla haría que «sin
   // facturar» diera de menos y el proyecto pareciera facturado de más.
+  //
+  // Las de mantenimiento tampoco: el abono mensual no descuenta nada de lo
+  // cotizado del desarrollo, y con un año de abono «sin facturar» llegaría a
+  // cero sin que se haya facturado un peso del desarrollo.
   const propias = facturas
-    .filter((f) => f.projectId === project.id)
+    .filter((f) => f.projectId === project.id && f.periodo === null)
     .sort((a, b) => b.emitidaOn.localeCompare(a.emitidaOn))
 
   // En la moneda del PROYECTO, no en la de cada factura: éste es el número
