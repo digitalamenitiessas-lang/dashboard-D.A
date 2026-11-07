@@ -332,6 +332,11 @@ interface StoreValue {
       method?: Payment['method']
       receipt?: string | null
       accountId?: string | null
+      /**
+       * En la que PAGÓ, que no siempre es la del plan: MALALA tiene el plan
+       * en dólares y paga en pesos. Sin dato, la del plan.
+       */
+      currency?: Payment['currency']
     },
   ) => Promise<boolean>
   /**
@@ -1942,15 +1947,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         method?: Payment['method']
         receipt?: string | null
         accountId?: string | null
+        currency?: Payment['currency']
       },
     ) => {
       try {
         const project = projects.find((p) => p.id === id)
-        // La moneda sale del plan. Si el proyecto no está en memoria se
-        // aborta en vez de asumir dólares: era el único lugar de la app que
-        // podía violar solo la regla de no mezclar monedas, y un cobro de
-        // ARS 200.000 guardado como USD 200.000 rompe el saldo de la cuenta,
-        // el total cobrado y el MRR sin que nada avise.
+        // La moneda sale del diálogo o, sin dato, del plan. Si el proyecto
+        // no está en memoria se aborta en vez de asumir dólares: era el único
+        // lugar de la app que podía violar solo la regla de no mezclar
+        // monedas, y un cobro de ARS 200.000 guardado como USD 200.000 rompe
+        // el saldo de la cuenta, el total cobrado y el MRR sin que nada avise.
         if (!project) {
           fail(
             'registrar el cobro de mantenimiento',
@@ -1960,6 +1966,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           )
           return false
         }
+        const moneda = data.currency ?? project.maintenance.currency
 
         const { data: charge, error } = await supabase
           .from('maintenance_charges')
@@ -1968,7 +1975,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
               projectId: id,
               chargedOn: data.date,
               amount: data.amount,
-              currency: project.maintenance.currency,
+              currency: moneda,
               method: data.method ?? null,
               receipt: data.receipt ?? null,
               accountId: data.accountId ?? null,
@@ -1996,10 +2003,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         // `formatMoney`, que rinde un «$» pelado: el historial de actividad
         // mezcla proyectos en USD y en ARS, así que era exactamente el lugar
         // donde el símbolo solo no dice nada.
-        const collected = formatMoneyWithCode(
-          data.amount,
-          project.maintenance.currency,
-        )
+        const collected = formatMoneyWithCode(data.amount, moneda)
         await logActivity({
           projectId: id,
           type: 'mantenimiento',

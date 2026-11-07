@@ -308,12 +308,31 @@ export function CollectMaintenanceDialog({
   onOpenChange: (open: boolean) => void
 }) {
   const { collectMaintenance } = useStore()
+  const plan = project.maintenance
   const [date, setDate] = React.useState(todayIso())
-  const [amount, setAmount] = React.useState(String(project.maintenance.amount))
+  const [amount, setAmount] = React.useState(String(plan.amount))
+  /**
+   * La moneda en la que PAGÓ, que puede no ser la del plan: MALALA tiene el
+   * plan en dólares y paga en pesos. Con la moneda clavada en la del plan,
+   * el selector de cuenta sólo ofrecía cuentas en dólares, la de pesos no
+   * aparecía, y el cobro quedaba sin cuenta: no impactaba en la caja.
+   */
+  const [currency, setCurrency] = React.useState<Currency>(plan.currency)
   const [method, setMethod] = React.useState<PaymentMethod>('Transferencia')
   const [receipt, setReceipt] = React.useState('')
   const [accountId, setAccountId] = React.useState('')
   const [saving, setSaving] = React.useState(false)
+
+  /**
+   * Cambiar la moneda vacía el importe y la cuenta: el importe del plan está
+   * en SU moneda, y dejarlo quieto convertiría USD 300 en ARS 300 sin que
+   * nadie lo tipee. Volviendo a la del plan se propone de nuevo.
+   */
+  function cambiarMoneda(v: Currency) {
+    setCurrency(v)
+    setAccountId('')
+    setAmount(v === plan.currency ? String(plan.amount) : '')
+  }
 
   const valid = Number(amount) > 0
 
@@ -328,14 +347,12 @@ export function CollectMaintenanceDialog({
       method,
       receipt: receipt.trim() || null,
       accountId: accountId || null,
+      currency,
     })
     setSaving(false)
     if (!ok) return // el store ya explicó el error con un toast rojo
     toast.success('Mantenimiento cobrado', {
-      description: `${project.name} — ${formatMoney(
-        Number(amount),
-        project.maintenance.currency,
-      )}`,
+      description: `${project.name} — ${formatMoney(Number(amount), currency)}`,
     })
     onOpenChange(false)
   }
@@ -359,14 +376,31 @@ export function CollectMaintenanceDialog({
               />
             </Field>
             <Field>
-              <FieldLabel htmlFor="cm-amount">Importe</FieldLabel>
-              <MoneyInput
-                id="cm-amount"
-                value={amount}
-                onValueChange={setAmount}
+              <FieldLabel htmlFor="cm-currency">Pagó en</FieldLabel>
+              <SimpleSelect
+                id="cm-currency"
+                value={currency}
+                onValueChange={(v) => cambiarMoneda(v as Currency)}
+                options={toOptions(['USD', 'ARS', 'EUR'] as const)}
               />
             </Field>
           </div>
+          <Field>
+            <FieldLabel htmlFor="cm-amount">Importe ({currency})</FieldLabel>
+            <MoneyInput
+              id="cm-amount"
+              value={amount}
+              onValueChange={setAmount}
+              placeholder="0"
+            />
+            {currency !== plan.currency ? (
+              <p className="text-xs text-muted-foreground text-pretty">
+                El plan es de {formatMoney(plan.amount, plan.currency)}. Cargá
+                lo que entró de verdad en {currency}: es lo que suma a la
+                cuenta.
+              </p>
+            ) : null}
+          </Field>
           <Field>
             <FieldLabel htmlFor="cm-method">Método de pago</FieldLabel>
             <SimpleSelect
@@ -382,10 +416,15 @@ export function CollectMaintenanceDialog({
               id="cm-account"
               value={accountId}
               onValueChange={setAccountId}
-              currency={project.maintenance.currency}
+              currency={currency}
               allowNone
               noneLabel="Definir después"
             />
+            {accountId === '' ? (
+              <p className="text-xs text-amber-300 text-pretty">
+                Sin cuenta, el cobro no suma a la caja hasta que se la asignes.
+              </p>
+            ) : null}
           </Field>
           <Field>
             <FieldLabel htmlFor="cm-receipt">Comprobante (opcional)</FieldLabel>
@@ -700,11 +739,12 @@ export function EditMaintenanceDialog({
  * (porque un cobro tapa el período en el que cae). Hasta ahora sólo se
  * arreglaba por SQL a mano.
  *
- * La moneda NO se edita. Un cobro está en la moneda del plan, y dejar
- * cambiarla acá permitiría convertir ARS 200.000 en USD 200.000 con un
- * click — la única regla que toda la app respeta es no mezclar monedas. Si
- * la moneda quedó mal, se borra el cobro y se carga de nuevo con el plan ya
- * corregido.
+ * La moneda SÍ se edita, porque un cobro está en la moneda en que se pagó y
+ * no siempre es la del plan: MALALA tiene el plan en dólares y paga en
+ * pesos, y esos cobros quedaron cargados en dólares, sin poder asignarles la
+ * cuenta en pesos donde entró la plata. Para no convertir ARS 200.000 en
+ * USD 200.000 con un click, cambiar la moneda vacía el importe y la cuenta:
+ * hay que tipear de nuevo lo que entró.
  */
 export function EditMaintenanceChargeDialog({
   charge,
@@ -722,11 +762,18 @@ export function EditMaintenanceChargeDialog({
 
   const [date, setDate] = React.useState(charge.chargedOn)
   const [amount, setAmount] = React.useState(String(charge.amount))
+  const [currency, setCurrency] = React.useState<Currency>(charge.currency)
   const [method, setMethod] = React.useState<PaymentMethod | ''>(
     charge.method ?? '',
   )
   const [receipt, setReceipt] = React.useState(charge.receipt ?? '')
   const [accountId, setAccountId] = React.useState(charge.accountId ?? '')
+
+  function cambiarMoneda(v: Currency) {
+    setCurrency(v)
+    setAccountId('')
+    setAmount(v === charge.currency ? String(charge.amount) : '')
+  }
   // La columna existía en la base, en el tipo y en el mapper desde el día
   // uno, pero no había forma de escribirla: el alta no la manda y no tenía
   // campo en ningún diálogo. Es el lugar natural para dejar dicho POR QUÉ se
@@ -743,6 +790,7 @@ export function EditMaintenanceChargeDialog({
     const ok = await updateMaintenanceCharge(charge.id, {
       chargedOn: date,
       amount: Number(amount),
+      currency,
       method: method || null,
       receipt: receipt.trim() || null,
       notes: notes.trim(),
@@ -753,7 +801,7 @@ export function EditMaintenanceChargeDialog({
     setSaving(false)
     if (!ok) return
     toast.success('Cobro corregido', {
-      description: `${projectName} · ${formatMoney(Number(amount), charge.currency)}`,
+      description: `${projectName} · ${formatMoney(Number(amount), currency)}`,
     })
     onOpenChange(false)
   }
@@ -814,17 +862,24 @@ export function EditMaintenanceChargeDialog({
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="ec-amount">
-                  Importe ({charge.currency})
-                </FieldLabel>
-                <MoneyInput
-                  id="ec-amount"
-                  value={amount}
-                  onValueChange={setAmount}
-                  placeholder="0"
+                <FieldLabel htmlFor="ec-currency">Pagó en</FieldLabel>
+                <SimpleSelect
+                  id="ec-currency"
+                  value={currency}
+                  onValueChange={(v) => cambiarMoneda(v as Currency)}
+                  options={toOptions(['USD', 'ARS', 'EUR'] as const)}
                 />
               </Field>
             </div>
+            <Field>
+              <FieldLabel htmlFor="ec-amount">Importe ({currency})</FieldLabel>
+              <MoneyInput
+                id="ec-amount"
+                value={amount}
+                onValueChange={setAmount}
+                placeholder="0"
+              />
+            </Field>
             <Field>
               <FieldLabel htmlFor="ec-method">Medio de pago</FieldLabel>
               <SimpleSelect
@@ -841,7 +896,9 @@ export function EditMaintenanceChargeDialog({
                   id="ec-account"
                   value={accountId}
                   onValueChange={setAccountId}
-                  currency={charge.currency}
+                  currency={currency}
+                  allowNone
+                  noneLabel="Sin asignar — no suma a la caja"
                 />
               </Field>
             ) : null}
