@@ -5,6 +5,7 @@ import {
   Landmark,
   LayoutDashboard,
   Receipt,
+  SquareKanban,
   StickyNote,
   Ticket,
   Truck,
@@ -22,6 +23,9 @@ export interface NavItem {
 
 export const navItems: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboard },
+  // Segundo a propósito: es lo que cada uno abre todos los días para ver en
+  // qué está y qué se le viene. Los avisos de tareas también apuntan acá.
+  { label: 'Tablero', href: '/tablero', icon: SquareKanban },
   { label: 'Proyectos', href: '/proyectos', icon: FolderKanban },
   // Clientes tiene sección propia Y sigue existiendo como pestaña de
   // Proyectos: son dos preguntas distintas. Acá se entra a un cliente para

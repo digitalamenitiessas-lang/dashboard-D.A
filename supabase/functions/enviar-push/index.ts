@@ -47,6 +47,8 @@ interface Suscripcion {
   endpoint: string
   p256dh: string
   auth: string
+  /** De quién es el celular. Null = suscripto antes del paso 28, sin dueño. */
+  user_id: string | null
 }
 
 Deno.serve(async (req) => {
@@ -72,7 +74,7 @@ Deno.serve(async (req) => {
   // --- Qué hay para mandar -------------------------------------------
   const { data: pendientes, error: errCola } = await db
     .from('notifications')
-    .select('id, title, body, url, attempts')
+    .select('id, title, body, url, attempts, user_id')
     .is('sent_at', null)
     .lt('attempts', 5)
     .order('created_at', { ascending: true })
@@ -83,9 +85,20 @@ Deno.serve(async (req) => {
 
   const { data: subs, error: errSubs } = await db
     .from('push_subscriptions')
-    .select('id, endpoint, p256dh, auth')
+    .select('id, endpoint, p256dh, auth, user_id')
 
   if (errSubs) return Response.json({ error: errSubs.message }, { status: 500 })
+
+  /**
+   * A qué celulares va cada aviso. `user_id` null en el aviso = para
+   * todos (cobros, caja, mantenimiento). Con valor = sólo los celulares de
+   * esa persona (recordatorios de tareas). Un celular sin dueño recibe los
+   * avisos para todos pero nunca uno personal: no se sabe de quién es.
+   */
+  const destinos = (aviso: { user_id: string | null }) =>
+    aviso.user_id
+      ? (subs as Suscripcion[]).filter((s) => s.user_id === aviso.user_id)
+      : (subs as Suscripcion[])
 
   // Sin celulares suscriptos no hay nada que hacer, pero la cola se marca
   // igual: si no, el día que alguien se suscriba le entran de golpe todos
@@ -109,8 +122,20 @@ Deno.serve(async (req) => {
       url: aviso.url,
     })
 
+    const para = destinos(aviso)
+
+    // Una persona sin ningún celular vinculado: no hay a quién mandarle.
+    // Se marca igual, para que no quede reintentándose para siempre.
+    if (para.length === 0) {
+      await db
+        .from('notifications')
+        .update({ sent_at: new Date().toISOString(), last_error: 'sin celulares de esa persona' })
+        .eq('id', aviso.id)
+      continue
+    }
+
     const resultados = await Promise.allSettled(
-      (subs as Suscripcion[]).map((s) =>
+      para.map((s) =>
         webpush.sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
           payload,
@@ -131,7 +156,7 @@ Deno.serve(async (req) => {
       // permisos revocados). No es un error a reintentar: es una fila que
       // hay que borrar, o vamos a fallar contra ella para siempre.
       if (status === 404 || status === 410) {
-        caducadas.add((subs as Suscripcion[])[i].id)
+        caducadas.add(para[i].id)
       } else {
         errores.push(`${status ?? '?'}: ${(r.reason as Error)?.message ?? 'error'}`)
       }

@@ -3,9 +3,10 @@
 /**
  * Alta y baja de un celular en las notificaciones push.
  *
- * Toda la empresa entra con el mismo usuario, así que no hay a quién
- * rutear: cada dispositivo que acepta queda como una fila más en
- * `push_subscriptions` y el aviso se le manda a todos.
+ * Cada dispositivo que acepta queda como una fila en `push_subscriptions`
+ * a nombre de quien tenía la sesión abierta. Los avisos para todos (cobros,
+ * caja, mantenimiento) van a todos los dispositivos; los personales
+ * (recordatorios de tareas), sólo a los de esa persona.
  *
  * En iPhone esto sólo funciona con la app agregada a la pantalla de
  * inicio. No es una limitación nuestra: Safari no expone la API de push
@@ -140,26 +141,74 @@ export async function activatePush(label = ''): Promise<ActivateResult> {
     })
   }
 
-  const json = sub.toJSON()
-  const supabase = createClient()
-  const { error } = await supabase.from('push_subscriptions').upsert(
-    {
-      endpoint: sub.endpoint,
-      p256dh: json.keys?.p256dh ?? keyToBase64(sub.getKey('p256dh')),
-      auth: json.keys?.auth ?? keyToBase64(sub.getKey('auth')),
-      user_agent: navigator.userAgent.slice(0, 300),
-      label,
-      last_seen_at: new Date().toISOString(),
-    },
-    { onConflict: 'endpoint' },
-  )
-
+  const error = await guardarSuscripcion(sub, { label })
   if (error) {
     console.error('[push] no se pudo guardar la suscripción:', error)
-    return { ok: false, message: error.message }
+    return { ok: false, message: error }
   }
 
   return { ok: true }
+}
+
+/**
+ * Guarda (o actualiza) la fila del dispositivo, con su dueño.
+ *
+ * El dueño importa desde el paso 28: los recordatorios de tareas van sólo
+ * a los celulares de la persona responsable. Sin `user_id`, el celular
+ * sigue recibiendo los avisos para todos pero nunca uno personal.
+ *
+ * `label` se manda sólo si viene: el upsert actualiza únicamente las
+ * columnas que recibe, así que vincular no le borra la etiqueta a nadie.
+ */
+async function guardarSuscripcion(
+  sub: PushSubscription,
+  extra: { label?: string } = {},
+): Promise<string | null> {
+  const supabase = createClient()
+  const { data } = await supabase.auth.getUser()
+  const json = sub.toJSON()
+  const fila = {
+    endpoint: sub.endpoint,
+    p256dh: json.keys?.p256dh ?? keyToBase64(sub.getKey('p256dh')),
+    auth: json.keys?.auth ?? keyToBase64(sub.getKey('auth')),
+    user_agent: navigator.userAgent.slice(0, 300),
+    last_seen_at: new Date().toISOString(),
+    ...(extra.label !== undefined ? { label: extra.label } : {}),
+  }
+  const { error } = await supabase
+    .from('push_subscriptions')
+    .upsert({ ...fila, user_id: data.user?.id ?? null }, { onConflict: 'endpoint' })
+
+  // Una base sin el paso 28 no tiene la columna `user_id`. El celular se
+  // guarda igual, sin dueño, en vez de dejar a alguien sin avisos: así
+  // desplegar la app antes de correr el SQL no rompe nada.
+  if (error && /user_id/.test(error.message)) {
+    const reintento = await supabase
+      .from('push_subscriptions')
+      .upsert(fila, { onConflict: 'endpoint' })
+    return reintento.error ? reintento.error.message : null
+  }
+  return error ? error.message : null
+}
+
+/**
+ * Si este dispositivo ya tenía los avisos activados, lo deja a nombre de
+ * quien tiene la sesión abierta. Se llama al abrir la app: así los
+ * celulares suscriptos antes del paso 28 se vinculan solos, y un celular
+ * que cambia de mano pasa a recibir los avisos de su nuevo dueño.
+ *
+ * Silencioso a propósito: si falla, el celular sigue recibiendo los
+ * avisos para todos, y no hay nada que el usuario pueda hacer al respecto.
+ */
+export async function vincularDispositivo(): Promise<void> {
+  try {
+    const sub = await currentSubscription()
+    if (!sub) return
+    const error = await guardarSuscripcion(sub)
+    if (error) console.warn('[push] no se pudo vincular el dispositivo:', error)
+  } catch (e) {
+    console.warn('[push] no se pudo vincular el dispositivo:', e)
+  }
 }
 
 /** Baja: se cancela en el navegador y se borra la fila. */

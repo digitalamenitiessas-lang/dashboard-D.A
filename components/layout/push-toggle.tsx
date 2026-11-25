@@ -20,6 +20,7 @@ import {
   isStandalone,
   pushSupport,
   registerServiceWorker,
+  vincularDispositivo,
 } from '@/lib/push'
 import { cn } from '@/lib/utils'
 
@@ -54,6 +55,9 @@ export function PushToggle() {
       if (!vivo) return
       setActivo(!!sub)
       setListo(true)
+      // Deja el celular a nombre de quien tiene la sesión abierta, para que
+      // le lleguen sus recordatorios de tareas.
+      if (sub) void vincularDispositivo()
     })()
     return () => {
       vivo = false

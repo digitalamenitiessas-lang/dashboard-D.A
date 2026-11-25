@@ -355,14 +355,22 @@ es la única que puede firmar con la clave VAPID.
 si el push falla o se cae Internet, el guardado del usuario no se rompe. Un
 `dedupe_key` con la fecha adentro evita que un vencimiento avise cada minuto.
 
-Avisan: un cobro, un mantenimiento cobrado, un movimiento de caja, un proyecto
-nuevo o que cambia de estado, una nota nueva, un **ticket nuevo** y un **ticket
-resuelto** (`supabase/20_push.sql` y `supabase/11_tickets.sql`). Aparte, una vez
-por día a las 9:00 de Buenos Aires, `revisar_vencimientos()` busca lo que venció.
+Desde el paso 28 (`supabase/28_tablero.sql`) avisan sólo cuatro cosas:
 
-Los avisos de ticket van con `dedupe_key` en null y es correcto: un reclamo
-nuevo es un hecho único, no un vencimiento que se repite todos los días. El
-dedupe es para lo segundo.
+| Aviso | Cuándo | A quién |
+| --- | --- | --- |
+| Cobro, mantenimiento cobrado, recibo | Al registrarse | Todos |
+| Movimiento de caja | Al registrarse | Todos |
+| Cobrar mantenimiento | Todos los días del 1 al 10, 9:00, mientras quede algún proyecto sin el mes cobrado | Todos |
+| Tarea por vencer | 3 días antes, el día anterior, el mismo día y todos los días después de vencida | El responsable |
+
+El resto —proyectos, notas, tickets, bloqueadores, gastos, propuestas, y los
+relojes diarios de dominios, notas, proyectos demorados y gastos fijos— se
+apagó a pedido del equipo. Las alertas de `/alertas` dentro del dashboard no
+cambiaron: eso no es push.
+
+Los avisos para todos van con `notifications.user_id` en null. Los personales
+lo llevan, y la Edge Function los manda sólo a los celulares de esa persona.
 
 ### Puesta en marcha
 
@@ -417,10 +425,10 @@ de saltearla. `pushSupport()` en [`lib/push.ts`](lib/push.ts) distingue «no se
 puede» de «falta instalarla» justamente para poder mostrar las instrucciones en
 vez de un botón que nunca va a andar. En Android alcanza con tocar la campana.
 
-La suscripción es **por dispositivo, no por usuario**: cada celular se da de
-alta una vez y el aviso va a todos los dados de alta, sin importar con qué
-cuenta se entró. El `upsert` va por `endpoint`, así que reactivar en el mismo
-celular no duplica. Eso venía de cuando toda la empresa compartía una cuenta,
-pero sigue siendo lo correcto con un usuario por persona: lo que recibe un
-aviso es un teléfono, no una identidad, y nadie quiere enterarse de un grado 3
-sólo en la computadora donde tiene la sesión abierta.
+La suscripción es **por dispositivo, a nombre de quien la activó**: cada
+celular se da de alta una vez y queda con el `user_id` de la sesión. Los avisos
+para todos le llegan a todos los celulares; los personales (recordatorios de
+tareas), sólo a los de esa persona. El `upsert` va por `endpoint`, así que
+reactivar en el mismo celular no duplica. Los celulares suscriptos antes del
+paso 28 no tenían dueño: se vinculan solos la próxima vez que su dueño abre el
+dashboard (`vincularDispositivo()` en [`lib/push.ts`](lib/push.ts)).
