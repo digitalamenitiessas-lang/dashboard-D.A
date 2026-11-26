@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import {
+  ArrowUp,
   CalendarClock,
   Check,
   Flag,
@@ -11,6 +12,7 @@ import {
   Pencil,
   Plus,
   Target,
+  X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Badge } from '@/components/ui/badge'
@@ -87,6 +89,24 @@ export default function TableroPage() {
   const [metaAbierta, setMetaAbierta] = React.useState(false)
   const [metaEditada, setMetaEditada] = React.useState<Meta | null>(null)
   const [nombreAbierto, setNombreAbierto] = React.useState(false)
+
+  // Con muchas metas, el tablero queda varias pantallas más abajo: al
+  // tocar una, se filtra y se baja hasta sus tareas para que se note.
+  const tableroRef = React.useRef<HTMLDivElement>(null)
+  const elegirMeta = (id: string) => {
+    const siguiente = metaFiltro === id ? 'todas' : id
+    setMetaFiltro(siguiente)
+    if (siguiente === 'todas') return
+    const quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    requestAnimationFrame(() =>
+      tableroRef.current?.scrollIntoView({ behavior: quieto ? 'auto' : 'smooth', block: 'start' }),
+    )
+  }
+  const verMetas = () => {
+    const quieto = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    window.scrollTo({ top: 0, behavior: quieto ? 'auto' : 'smooth' })
+  }
+  const metaElegida = metas.find((m) => m.id === metaFiltro) ?? null
 
   const nuevaTarea = (inicial: { metaId?: string | null; estado?: EstadoTarea } = {}) => {
     setTareaEditada(null)
@@ -183,75 +203,96 @@ export default function TableroPage() {
         metas={metasActivas}
         tareas={tareas}
         seleccionada={metaFiltro}
-        onSeleccionar={(id) => setMetaFiltro((actual) => (actual === id ? 'todas' : id))}
+        onSeleccionar={elegirMeta}
         onEditar={editarMeta}
         onNueva={nuevaMeta}
         onNuevaTarea={(metaId) => nuevaTarea({ metaId })}
       />
 
-      <Tabs defaultValue="tablero" className="gap-4">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <TabsList>
-            <TabsTrigger value="tablero">Tablero</TabsTrigger>
-            <TabsTrigger value="personas">Por persona</TabsTrigger>
-          </TabsList>
-          <div className="grid grid-cols-2 gap-2 md:w-[28rem]">
-            <SimpleSelect
-              size="sm"
-              value={persona}
-              onValueChange={setPersona}
-              options={[
-                { value: 'todos', label: 'Todo el equipo' },
-                { value: 'yo', label: 'Mis tareas' },
-                ...miembros
-                  .filter((m) => m.userId !== yo)
-                  .map((m) => ({ value: m.userId, label: m.nombre })),
-                { value: 'nadie', label: 'Sin responsable' },
-              ]}
-            />
-            <SimpleSelect
-              size="sm"
-              value={metaFiltro}
-              onValueChange={setMetaFiltro}
-              options={[
-                { value: 'todas', label: 'Todas las metas' },
-                ...metas.map((m) => ({
-                  value: m.id,
-                  label: m.estado === 'activa' ? m.titulo : `${m.titulo} (${m.estado})`,
-                })),
-                { value: 'sin', label: 'Sin meta' },
-              ]}
-            />
-          </div>
-        </div>
-
-        <TabsContent value="tablero">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {ESTADOS_TAREA.map(({ value }) => (
-              <Columna
-                key={value}
-                estado={value}
-                tareas={visibles.filter((t) => t.estado === value)}
-                tablero={tablero}
-                verTodasHechas={verTodasHechas}
-                onVerTodasHechas={() => setVerTodasHechas(true)}
-                onAgregar={() => nuevaTarea({ estado: value })}
-                onEditar={editarTarea}
+      <div ref={tableroRef} className="scroll-mt-[calc(5rem+env(safe-area-inset-top))]">
+        <Tabs defaultValue="tablero" className="gap-4">
+          {metaElegida ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-neon-violet/30 bg-neon-violet/10 px-4 py-2.5 text-sm">
+              <Target className="size-4 shrink-0 text-neon-violet" />
+              <span className="min-w-[min(14rem,100%)] flex-1">
+                <span className="text-muted-foreground">Tareas de la meta </span>
+                <span className="font-semibold">{metaElegida.titulo}</span>
+              </span>
+              <div className="ml-auto flex gap-2">
+                <Button size="sm" variant="ghost" onClick={verMetas}>
+                  <ArrowUp data-icon="inline-start" />
+                  Metas
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setMetaFiltro('todas')}>
+                  <X data-icon="inline-start" />
+                  Ver todas
+                </Button>
+              </div>
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <TabsList>
+              <TabsTrigger value="tablero">Tablero</TabsTrigger>
+              <TabsTrigger value="personas">Por persona</TabsTrigger>
+            </TabsList>
+            <div className="grid grid-cols-2 gap-2 md:w-[28rem]">
+              <SimpleSelect
+                size="sm"
+                value={persona}
+                onValueChange={setPersona}
+                options={[
+                  { value: 'todos', label: 'Todo el equipo' },
+                  { value: 'yo', label: 'Mis tareas' },
+                  ...miembros
+                    .filter((m) => m.userId !== yo)
+                    .map((m) => ({ value: m.userId, label: m.nombre })),
+                  { value: 'nadie', label: 'Sin responsable' },
+                ]}
               />
-            ))}
+              <SimpleSelect
+                size="sm"
+                value={metaFiltro}
+                onValueChange={setMetaFiltro}
+                options={[
+                  { value: 'todas', label: 'Todas las metas' },
+                  ...metas.map((m) => ({
+                    value: m.id,
+                    label: m.estado === 'activa' ? m.titulo : `${m.titulo} (${m.estado})`,
+                  })),
+                  { value: 'sin', label: 'Sin meta' },
+                ]}
+              />
+            </div>
           </div>
-        </TabsContent>
 
-        <TabsContent value="personas">
-          <PorPersona
-            tablero={tablero}
-            tareas={visibles}
-            persona={persona}
-            onEditar={editarTarea}
-            onCambiarNombre={() => setNombreAbierto(true)}
-          />
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="tablero">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {ESTADOS_TAREA.map(({ value }) => (
+                <Columna
+                  key={value}
+                  estado={value}
+                  tareas={visibles.filter((t) => t.estado === value)}
+                  tablero={tablero}
+                  verTodasHechas={verTodasHechas}
+                  onVerTodasHechas={() => setVerTodasHechas(true)}
+                  onAgregar={() => nuevaTarea({ estado: value })}
+                  onEditar={editarTarea}
+                />
+              ))}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="personas">
+            <PorPersona
+              tablero={tablero}
+              tareas={visibles}
+              persona={persona}
+              onEditar={editarTarea}
+              onCambiarNombre={() => setNombreAbierto(true)}
+            />
+          </TabsContent>
+        </Tabs>
+      </div>
 
       <TareaDialog
         open={tareaAbierta}
